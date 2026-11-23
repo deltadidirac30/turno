@@ -33,7 +33,7 @@ export async function render(root) {
     resources.check(name).then(draw);
     draw();
     return h('div', { class: 'set-row' },
-      h('div', {}, h('div', { class: 'set-name' }, t('settings.res.' + name)), h('div', { class: 'muted small' }, formatBytes(resources.groupSize(name)) + ' · ' + t('settings.res.' + name + 'Desc'))),
+      h('div', {}, h('div', { class: 'set-name' }, t('settings.res.' + name)), h('div', { class: 'muted small' }, formatBytes(resources.groupSize(name)) + ', ' + t('settings.res.' + name + 'Desc'))),
       h('div', { class: 'set-side' }, status, btn));
   };
   const auto = h('input', { type: 'checkbox', class: 'switch', checked: s.autoDownload });

@@ -1,3 +1,4 @@
 tests/assets/
 tests/shots/
 .DS_Store
+tests/ocr-bench/img/

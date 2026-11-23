@@ -1,6 +1,6 @@
 // Estrae date di scadenza plausibili dal testo OCR di una confezione.
 // Modulo puro (nessun DOM): testabile con Node.
-import { isValidExpiry, expiryEnd, startOfDay } from './dates.js';
+import { isValidExpiry, expiryEnd, startOfDay, daysInMonth } from './dates.js';
 
 const MONTHS = {
   GEN: 1, JAN: 1, FEB: 2, MAR: 3, APR: 4, MAG: 5, MAY: 5, GIU: 6, JUN: 6, LUG: 7, JUL: 7,
@@ -8,12 +8,13 @@ const MONTHS = {
 };
 const MONTH_RE = 'GEN|FEB|MAR|APR|MAG|GIU|LUG|AGO|SET|OTT|NOV|DIC|JAN|MAY|JUN|JUL|AUG|SEP|OCT|DEC';
 
-// Diciture: l'ordine conta (la più specifica vince).
+// Diciture, tolleranti agli errori tipici dell'OCR (CONSUMARSI → COMSUMARSI, TMC → TNC...).
+// L'ordine conta: la più specifica vince.
 const KEYWORDS = [
-  { type: 'best_before', re: /PREFERIB\w*|PREF\.?(?=\s)|\bT\.?M\.?C\b|BEST\s*BEFORE|\bBBE?\b|MIN\w*\s+(?:DI\s+)?CONSERV\w*|\bMHD\b|DE\s+PREFERENCE/g },
-  { type: 'use_by', re: /CONSUM\w*\s+ENTRO|USE\s*BY|\bEXP\w*\b|SCAD\w*|CONSUMIR|A\s+CONSOMMER\s+JUSQU/g },
-  { type: 'use_by_weak', re: /DA\s+CONSUM\w*|CONSUMAR\w*/g },
-  { type: 'generic', re: /\bENTRO\b|\bENTR0\b|\bFINE\b|\bVALID\w*/g },
+  { type: 'best_before', re: /PREF[EF]?R[IL1]B\w*|PREF\.?(?=\s)|\bT[.\s]?[MN][.\s]?C\b|BEST\s*BEFORE|\bBBE?\b|MIN\w*\s+(?:DI\s+)?CONSERV\w*|\bMHD\b|DE\s+PREFERENCE/g },
+  { type: 'use_by', re: /C[O0][NM]?S[UV][MN]\w*\s+E[NH]TR[O0A]|\bCONS\b\.?\s*E[NH]TR[O0A]|USE\s*BY|\bEXP\w*\b|SCAD\w*|CONSUMIR|A\s+CONSOMMER\s+JUSQU/g },
+  { type: 'use_by_weak', re: /DA\s+C[O0][NM]?S[UV][MN]\w*|C[O0][NM]S[UV]MAR\w*/g },
+  { type: 'generic', re: /\bE[NH]TR[O0A]\b|\bFINE\b|\bVALID\w*/g },
   { type: 'production', re: /PROD\w*|CONFEZ\w*|\bCONF\b|PACK\w*|\bPKD\b|IMBOTT\w*|\bMFG\b|FABBRIC\w*|MACELL\w*|DATA\s+DI\s+PRODUZ\w*|SEZIONAT\w*|CONGELAT\w*\s+IL/g },
 ];
 
@@ -39,12 +40,8 @@ function findKeywords(line) {
   for (const k of KEYWORDS) {
     k.re.lastIndex = 0;
     let m;
-    while ((m = k.re.exec(line))) {
-      // Le parole dei produttori non contano se fanno parte di una dicitura di scadenza più lunga.
-      out.push({ type: k.type, index: m.index, end: m.index + m[0].length });
-    }
+    while ((m = k.re.exec(line))) out.push({ type: k.type, index: m.index, end: m.index + m[0].length });
   }
-  // Rimuove le sovrapposizioni lasciando la dicitura più specifica (ordine di KEYWORDS).
   const order = KEYWORDS.map((k) => k.type);
   out.sort((a, b) => a.index - b.index || order.indexOf(a.type) - order.indexOf(b.type));
   return out;
@@ -64,7 +61,6 @@ function lotSpans(line) {
 }
 
 function classify(kws) {
-  // Riduce le diciture di una riga (o di un tratto di riga) a un solo significato.
   const types = kws.map((k) => k.type);
   if (types.includes('best_before')) return 'best_before';
   if (types.includes('use_by')) return 'use_by';
@@ -74,20 +70,59 @@ function classify(kws) {
   return null;
 }
 
-function year(ys) { return ys.length === 2 ? 2000 + +ys : +ys; }
+// Anno a 4 cifre letto male (2026 → 2826, 2626): la seconda cifra di un anno di questo secolo è 0.
+function year(ys, nowY) {
+  if (ys.length === 2) return { y: 2000 + +ys, fixed: false };
+  let y = +ys;
+  if ((y < nowY - 2 || y > nowY + 12) && ys[0] === '2' && /[35689]/.test(ys[1])) {
+    const alt = +('20' + ys.slice(2));
+    if (alt >= nowY - 2 && alt <= nowY + 12) return { y: alt, fixed: true };
+  }
+  return { y, fixed: false };
+}
+
+// Prima cifra di giorno/mese letta come 9, 8 o 6 al posto di 0 (stampa a punti).
+function part(s, max) {
+  const n = +s;
+  if (n >= 1 && n <= max) return { n, fixed: false };
+  if (s.length === 2 && /[689]/.test(s[0])) {
+    const alt = +s[1];
+    if (alt >= 1 && alt <= max) return { n: alt, fixed: true };
+  }
+  return { n, fixed: false };
+}
 
 const PATTERNS = [
-  { name: 'full', re: /(^|[^\d])(\d{1,2})\s?[.\/\-]\s?(\d{1,2})\s?[.\/\-]\s?(\d{4}|\d{2})(?!\d)/g,
-    build: (m) => ({ d: +m[2], m: +m[3], y: year(m[4]) }), base: 30 },
+  // 28/11/2026, 28.11.26, 28-11-26, anche con spazio prima dell'anno (28/11 2026)
+  { name: 'full', re: /(^|[^\d,])(\d{1,2})\s?[.\/\-,*]\s?(\d{1,2})(?:\s?[.\/\-,*]\s?|\s)(\d{4}|\d{2})(?!\d)/g,
+    build: (m, Y) => { const d = part(m[2], 31), mo = part(m[3], 12), y = year(m[4], Y); return { exp: { d: d.n, m: mo.n, y: y.y }, fixes: [d, mo, y].filter((x) => x.fixed).length }; }, base: 30 },
   { name: 'monthname', re: new RegExp(`(^|[^\\dA-Z])(?:(\\d{1,2})\\s?[.\\/\\-]?\\s?)?(${MONTH_RE})[A-Z]{0,7}\\.?\\s?[.\\/\\-]?\\s?(\\d{4}|\\d{2})(?!\\d)`, 'g'),
-    build: (m) => ({ d: m[2] ? +m[2] : null, m: MONTHS[m[3]], y: year(m[4]) }), base: 28 },
+    build: (m, Y) => { const y = year(m[4], Y); return { exp: { d: m[2] ? +m[2] : null, m: MONTHS[m[3]], y: y.y }, fixes: y.fixed ? 1 : 0 }; }, base: 28 },
+  // 03/2027, 03/27 (mese e anno)
   { name: 'monthyear', re: /(^|[^\d.\/\-])(\d{1,2})\s?[.\/\-]\s?(\d{4}|\d{2})(?![\d.\/\-])/g,
-    build: (m) => ({ d: null, m: +m[2], y: year(m[3]) }), base: 16 },
+    build: (m, Y) => { const y = year(m[3], Y); return { exp: { d: null, m: +m[2], y: y.y }, fixes: y.fixed ? 1 : 0 }; }, base: 16 },
+  // 28/11 senza anno: ammesso dalla legge per i prodotti freschi. L'anno viene dedotto e segnalato.
+  { name: 'daymonth', re: /(^|[^\d.\/\-])(\d{1,2})\s?[.\/\-]\s?(\d{1,2})(?![\d]|\s?[.\/\-:]\s?\d)/g,
+    build: (m, Y, now) => {
+      const d = part(m[2], 31), mo = part(m[3], 12);
+      if (mo.n < 1 || mo.n > 12 || d.n < 1 || d.n > daysInMonth(now.getFullYear(), mo.n)) return null;
+      let y = now.getFullYear();
+      const cand = new Date(y, mo.n - 1, d.n);
+      if ((cand - startOfDay(now)) / 86400000 < -45) y += 1; // già passata da tempo: è dell'anno prossimo
+      return { exp: { d: d.n, m: mo.n, y }, fixes: [d, mo].filter((x) => x.fixed).length, yearInferred: true, short: m[2].length < 2 || m[3].length < 2 };
+    }, base: 14 },
   { name: 'spaced', re: /(^|[^\d])(\d{2}) (\d{2}) (\d{4}|\d{2})(?!\d)/g,
-    build: (m) => ({ d: +m[2], m: +m[3], y: year(m[4]) }), base: 12, needsKeyword: true },
+    build: (m, Y) => { const y = year(m[4], Y); return { exp: { d: +m[2], m: +m[3], y: y.y }, fixes: y.fixed ? 1 : 0 }; }, base: 12, needsKeyword: true },
   { name: 'compact', re: /(^|[^\d])(\d{2})(\d{2})(\d{4}|\d{2})(?!\d)/g,
-    build: (m) => ({ d: +m[2], m: +m[3], y: year(m[4]) }), base: 8, needsKeyword: true },
+    build: (m, Y) => { const y = year(m[4], Y); return { exp: { d: +m[2], m: +m[3], y: y.y }, fixes: y.fixed ? 1 : 0 }; }, base: 8, needsKeyword: true },
 ];
+
+// Prezzi, pesi e orari non sono date.
+function looksLikeAmount(line, start, end) {
+  const before = line.slice(Math.max(0, start - 4), start);
+  const after = line.slice(end, end + 4);
+  return /€|EUR|\$/.test(before) || /^\s?(€|EUR|KG|G\b|GR|ML|CL|L\b|%)/.test(after) || /^\s?:\s?\d/.test(after);
+}
 
 export function extractDates(text, { now = new Date() } = {}) {
   const rawLines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -100,7 +135,7 @@ export function extractDates(text, { now = new Date() } = {}) {
 
   fixed.forEach((line, i) => {
     const lots = lotSpans(lines[i]);
-    const taken = []; // intervalli già usati da pattern più forti
+    const taken = [];
     for (const p of PATTERNS) {
       p.re.lastIndex = 0;
       let m;
@@ -110,11 +145,13 @@ export function extractDates(text, { now = new Date() } = {}) {
         p.re.lastIndex = Math.max(end - 1, m.index + 1);
         if (taken.some(([a, b]) => start < b && end > a)) continue;
         if (lots.some(([a, b]) => start < b && end > a)) continue; // numero di lotto: mai come scadenza
-        const exp = p.build(m);
+        if ((p.name === 'daymonth' || p.name === 'monthyear') && looksLikeAmount(line, start, end)) continue;
+        const built = p.build(m, nowY, now);
+        if (!built) continue;
+        const { exp } = built;
         if (!isValidExpiry(exp)) continue;
         if (exp.y < nowY - 2 || exp.y > nowY + 12) continue;
 
-        // Dicitura più vicina prima della data sulla stessa riga, altrimenti righe sopra.
         const before = kwPerLine[i].filter((k) => k.end <= start + 1);
         const after = kwPerLine[i].filter((k) => k.index >= end && k.index - end < 6);
         let kwType = null; let kwDist = null;
@@ -131,10 +168,13 @@ export function extractDates(text, { now = new Date() } = {}) {
         }
         const isExpiryKw = kwType && kwType !== 'production';
         if (p.needsKeyword && !(isExpiryKw && kwDist !== null && kwDist <= 1)) continue;
+        // Giorno/mese senza anno: senza dicitura servono due cifre per parte (28/11, non 2/1).
+        if (p.name === 'daymonth' && built.short && !isExpiryKw) continue;
 
-        let score = p.base;
+        let score = p.base + (p.name === 'daymonth' && isExpiryKw ? 10 : 0);
         if (isExpiryKw) score += kwType === 'generic' ? [25, 18, 8][kwDist] : [45, 35, 12][kwDist];
         if (kwType === 'production') score -= [60, 25, 10][kwDist];
+        score -= built.fixes * 7;
         const daysLeft = Math.round((expiryEnd(exp) - today) / 86400000);
         if (daysLeft < -1) score -= 20;
         else if (daysLeft <= 900) score += 5;
@@ -145,8 +185,9 @@ export function extractDates(text, { now = new Date() } = {}) {
         ctxLines.push(rawLines[i]);
         found.push({
           exp, kind, score, pattern: p.name,
+          yearInferred: !!built.yearInferred,
           raw: rawLines[i].slice(start, end).trim() || m[0].trim(),
-          context: ctxLines.join(' · ').slice(0, 90),
+          context: ctxLines.join(' / ').slice(0, 90),
           line: i,
           production: kwType === 'production',
         });
@@ -155,29 +196,65 @@ export function extractDates(text, { now = new Date() } = {}) {
     }
   });
 
-  // Una sola voce per data: tiene il punteggio migliore e la dicitura riconosciuta.
-  const byKey = new Map();
-  for (const c of found) {
-    const key = `${c.exp.y}-${c.exp.m}-${c.exp.d}`;
-    const prev = byKey.get(key);
-    if (!prev) { byKey.set(key, c); continue; }
-    const best = c.score > prev.score ? c : prev;
-    if (best.kind === 'unknown') best.kind = c.kind !== 'unknown' ? c.kind : prev.kind;
-    byKey.set(key, best);
-  }
-  // Una data solo mese/anno coperta da una data completa dello stesso mese è ridondante.
-  const all = [...byKey.values()].filter((c) => !(c.exp.d == null && [...byKey.values()].some((o) => o !== c && o.exp.d != null && o.exp.y === c.exp.y && o.exp.m === c.exp.m && o.line === c.line)));
-  all.sort((a, b) => b.score - a.score);
+  const all = dedupe(found);
   const plausible = all.filter((c) => c.score >= 15 && !c.production);
   return { candidates: plausible, all, lines: rawLines };
+}
+
+const keyOf = (e) => `${e.y}-${e.m}-${e.d}`;
+
+function dedupe(found) {
+  const byKey = new Map();
+  for (const c of found) {
+    const key = keyOf(c.exp);
+    const prev = byKey.get(key);
+    if (!prev) { byKey.set(key, { ...c }); continue; }
+    const best = c.score > prev.score ? { ...c } : prev;
+    if (best.kind === 'unknown') best.kind = c.kind !== 'unknown' ? c.kind : prev.kind;
+    best.yearInferred = prev.yearInferred && c.yearInferred;
+    byKey.set(key, best);
+  }
+  const vals = [...byKey.values()];
+  // Una data solo mese/anno coperta da una data completa dello stesso mese è ridondante.
+  const all = vals.filter((c) => !(c.exp.d == null && vals.some((o) => o !== c && o.exp.d != null && o.exp.y === c.exp.y && o.exp.m === c.exp.m && o.line === c.line)));
+  all.sort((a, b) => b.score - a.score);
+  return all;
+}
+
+// Unisce i risultati di più letture della stessa foto: una data trovata più volte guadagna fiducia.
+export function mergeResults(results) {
+  const byKey = new Map();
+  for (const r of results) {
+    for (const c of r.all) {
+      const key = keyOf(c.exp);
+      const prev = byKey.get(key);
+      if (!prev) { byKey.set(key, { ...c, hits: 1 }); continue; }
+      const best = c.score > prev.score ? { ...c, hits: prev.hits } : prev;
+      best.hits = prev.hits + 1;
+      if (best.kind === 'unknown') best.kind = c.kind !== 'unknown' ? c.kind : prev.kind;
+      best.yearInferred = prev.yearInferred && c.yearInferred;
+      if (prev.context.length > best.context.length && /[A-Z]{3}/i.test(prev.context)) best.context = prev.context;
+      byKey.set(key, best);
+    }
+  }
+  const all = [...byKey.values()].map((c) => ({ ...c, score: c.score + Math.min(3, c.hits - 1) * 6 }));
+  all.sort((a, b) => b.score - a.score);
+  return { candidates: all.filter((c) => c.score >= 15 && !c.production), all };
 }
 
 // Decide se mostrare la scelta: più di una data plausibile senza un chiaro vincitore.
 export function needsChoice(candidates) {
   if (candidates.length <= 1) return false;
   const [a, b] = candidates;
-  // Anche con un vincitore netto mostriamo la scelta se le diciture sono diverse e leggibili
-  // (es. una "entro" e una "preferibilmente"): l'utente decide quale registrare.
+  // Diciture diverse e leggibili (es. «entro» e «preferibilmente»): decide l'utente.
   if (a.kind !== 'unknown' && b.kind !== 'unknown' && a.kind !== b.kind) return true;
   return a.score - b.score < 30;
+}
+
+// Lettura «sicura»: dicitura riconosciuta e data completa, oppure confermata da più letture.
+export function isConfident(result) {
+  const top = result.candidates[0];
+  if (!top) return false;
+  if (top.score >= 60 && !top.yearInferred) return true;
+  return (top.hits || 1) >= 2 && top.score >= 35;
 }

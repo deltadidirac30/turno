@@ -11,7 +11,7 @@ import { lookup, normalizeEan, isValidEan, remember } from '../products.js';
 import { newItem, save, shelvesByLocation, LOCATIONS } from '../store.js';
 import { sameExpiry } from '../dates.js';
 import { needsChoice } from '../ocr-parse.js';
-import { createScanner, liveBarcode, resourceStatus, readDate, chooseDate, confirmItem } from '../components/scanner.js';
+import { createScanner, liveBarcode, resourceStatus, readDate, readDateFromFile, dateTools, noDateMessage, chooseDate, confirmItem } from '../components/scanner.js';
 import { locationPicker } from '../components/forms.js';
 import { navigate } from '../router.js';
 
@@ -146,7 +146,7 @@ export async function render(root) {
         const dups = e.ean ? dupCount(e.ean) : 0;
         li.append(sel,
           h('div', { class: 'what' }, nameIn,
-            h('span', { class: 'meta' }, [t('loc.' + e.location), e.ean || t('batch.noCode'), dups > 1 ? t('batch.sameCode', { n: dups }) : ''].filter(Boolean).join(' · '))),
+            h('span', { class: 'meta' }, [t('loc.' + e.location), e.ean || t('batch.noCode'), dups > 1 ? t('batch.sameCode', { n: dups }) : ''].filter(Boolean).join(', '))),
           h('button', { type: 'button', class: 'icon-btn', 'aria-label': t('batch.more'), onclick: () => more(e) }, icon('dots')));
       };
       fill();
@@ -351,6 +351,7 @@ export async function render(root) {
         h('div', { class: 'qline' }, h('span', { class: 'qpos' }, t('batch.pos', { pos, total })), h('span', { class: 'prod-name' }, item.name || e.ean || t('item.unnamed')), locBtn)));
       sc.freeze(null);
       sc.setMessage(cam.ok ? t('scan.dateHint') : t('scan.noCameraHint'), cam.ok ? '' : 'is-warn');
+      sc.setTopRight(dateTools((f) => shoot(null, item, e, f)));
       const shutter = h('button', { type: 'button', class: 'shutter', 'aria-label': t('scan.shoot'), disabled: !cam.ok, onclick: () => shoot(shutter, item, e) }, h('span'));
       sc.setActions(
         h('button', { type: 'button', class: 'pill' + (cam.ok ? '' : ' pill-primary'), onclick: () => confirm(item, e, null) }, icon('keyboard'), t('scan.typeDate')),
@@ -358,14 +359,17 @@ export async function render(root) {
         h('button', { type: 'button', class: 'pill', onclick: () => skip(e) }, t('batch.later'), icon('skip')));
     }
 
-    async function shoot(btn, item, e) {
-      btn.disabled = true; btn.classList.add('is-busy');
-      const r = await readDate(sc, { onStage: (s) => sc.setMessage(t('scan.stage.' + s), 'is-busy') });
-      btn.disabled = false; btn.classList.remove('is-busy');
+    async function shoot(btn, item, e, file) {
+      const shutter = btn || sc.el.querySelector('.shutter');
+      if (shutter) { shutter.disabled = true; shutter.classList.add('is-busy'); }
+      const onStage = (s, p) => sc.setMessage(t('scan.stage.' + s, p), 'is-busy');
+      const r = file ? await readDateFromFile(file, { onStage }) : await readDate(sc, { onStage });
+      if (file && cam.ok) await sc.resumeCamera();
+      if (shutter) { shutter.disabled = !cam.ok; shutter.classList.remove('is-busy'); }
       if (!alive) return;
       if (r.status === 'ok') {
         await db.bumpStats({ ocrRead: 1 });
-      sc.setMessage(t('scan.dateHint'));
+        sc.setMessage(t('scan.dateHint'));
         let pick = r.candidates[0];
         if (needsChoice(r.candidates)) {
           pick = await chooseDate(sc.overlay, r.candidates);
@@ -375,7 +379,7 @@ export async function render(root) {
         return confirm(item, e, pick);
       }
       sc.freeze(null);
-      if (r.status === 'none') sc.setMessage(t('batch.noDateFound'), 'is-warn');
+      if (r.status === 'none') sc.setMessage(noDateMessage(r, 'batch.noDateFound'), 'is-warn');
       else if (r.status === 'unavailable') { sc.setMessage(t('res.ocr.offline'), 'is-warn'); confirm(item, e, null); }
       else sc.setMessage(t('scan.ocrError'), 'is-warn');
     }
@@ -383,7 +387,7 @@ export async function render(root) {
     async function confirm(item, e, cand) {
       const d = { ...item, expiry: cand ? cand.exp : item.expiry, expiryKind: cand ? cand.kind : item.expiryKind };
       const res = await confirmItem(sc.overlay, d, {
-        source: cand ? 'ocr' : null, shelves, title: d.name || t('confirm.title'),
+        source: cand ? 'ocr' : null, yearInferred: !!cand?.yearInferred, shelves, title: d.name || t('confirm.title'),
         primary: t('batch.confirmNext'),
         extra: [[t('batch.later'), 'skip'], ...(cam.ok ? [[t('confirm.retake'), 'retake']] : [])],
       });

@@ -37,7 +37,7 @@ export function qtyStepper(value, onChange) {
 }
 
 // Data in tre campi: il giorno (e il mese) si possono lasciare vuoti, l'anno è obbligatorio.
-export function dateFields({ expiry = null, kind = 'unknown', noDate = false, source = null } = {}, { onChange } = {}) {
+export function dateFields({ expiry = null, kind = 'unknown', noDate = false, source = null, yearInferred = false } = {}, { onChange } = {}) {
   const [d0, m0, y0] = expiryToFields(expiry);
   const mk = (cls, ph, max, aria, val) => h('input', {
     class: 'dp-in ' + cls, inputmode: 'numeric', pattern: '[0-9]*', autocomplete: 'off', enterkeyhint: 'next',
@@ -116,12 +116,12 @@ export function dateFields({ expiry = null, kind = 'unknown', noDate = false, so
     }
     if (!r.value) { note.textContent = t('date.hint'); return; }
     const parts = [];
-    if (state.source === 'ocr') parts.push(t('date.fromOcr'));
+    if (state.source === 'ocr') parts.push(yearInferred ? t('date.yearInferred', { y: r.value.y }) : t('date.fromOcr'));
     if (state.source === 'edited' && original && !sameExpiry(original, r.value)) parts.push(t('date.corrected'));
     if (r.value.d == null) parts.push(r.value.m == null ? t('date.yearOnly') : t('date.monthOnly'));
     if (r.warn?.includes('past')) { parts.push(t('date.warnPast')); note.classList.add('is-warn'); }
     if (r.warn?.includes('far')) { parts.push(t('date.warnFar')); note.classList.add('is-warn'); }
-    note.textContent = parts.join(' · ') || t('date.hint');
+    note.textContent = parts.join('. ') || t('date.hint');
   }
   refresh();
 
@@ -143,10 +143,10 @@ export function dateFields({ expiry = null, kind = 'unknown', noDate = false, so
 }
 
 // Scheda completa di una confezione. compact = versione nello scanner (meno campi).
-export function itemForm(item, { compact = false, shelves = {}, source = null } = {}) {
+export function itemForm(item, { compact = false, shelves = {}, source = null, yearInferred = false } = {}) {
   const name = h('input', { class: 'in', type: 'text', value: item.name || '', placeholder: t('form.namePh'), autocomplete: 'off', enterkeyhint: 'done', 'aria-label': t('form.name') });
   const brand = h('input', { class: 'in in-sm', type: 'text', value: item.brand || '', placeholder: t('form.brandPh'), autocomplete: 'off', 'aria-label': t('form.brand') });
-  const dates = dateFields({ expiry: item.expiry, kind: item.expiryKind, noDate: item.noDate, source });
+  const dates = dateFields({ expiry: item.expiry, kind: item.expiryKind, noDate: item.noDate, source, yearInferred });
   let location = item.location;
   const shelfList = h('datalist', { id: 'shelves-' + item.id });
   const shelf = h('input', { class: 'in in-sm', type: 'text', value: item.shelf || '', placeholder: t('form.shelfPh'), list: shelfList.id, 'aria-label': t('form.shelf'), autocomplete: 'off' });

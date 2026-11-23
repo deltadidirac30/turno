@@ -24,8 +24,8 @@ export async function render(root) {
       h('a', { class: 'row-main', href: '#/item/' + i.id },
         h('span', { class: 'what' },
           h('span', { class: 'name' }, i.name || h('em', {}, t('item.unnamed'))),
-          h('span', { class: 'meta' }, [i.brand, i.location ? t('loc.' + i.location) : '', i.ean ? i.ean : ''].filter(Boolean).join(' · ')),
-          h('span', { class: 'tag tag-todo' }, miss.map((m) => t('row.todo.' + m)).join(' · ')))),
+          h('span', { class: 'meta' }, [i.brand, i.location ? t('loc.' + i.location) : '', i.ean ? i.ean : ''].filter(Boolean).join(', ')),
+          h('span', { class: 'tag tag-todo' }, miss.map((m) => t('row.todo.' + m)).join(', ')))),
       miss.includes('date')
         ? h('button', { type: 'button', class: 'eat eat-alt', onclick: () => navigate('#/scan/' + i.id) }, icon('photo'), h('span', {}, t('todo.readDate')))
         : null);

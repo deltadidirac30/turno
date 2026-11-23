@@ -15,8 +15,8 @@ export async function start(video, { hires = false } = {}) {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      // Per la foto del tavolo serve più dettaglio: i codici sono piccoli.
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: hires ? 3840 : 1920 }, height: { ideal: hires ? 2160 : 1080 } },
+      // Massima risoluzione: date e codici piccoli si leggono meglio (si ritaglia solo la cornice).
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } },
     });
   } catch (e) {
     const name = e && e.name;
@@ -50,6 +50,18 @@ export function stop() {
   stream = null;
   if (videoEl) { try { videoEl.pause(); } catch {} videoEl.srcObject = null; }
   videoEl = null;
+}
+
+export function zoomRange() {
+  const track = stream && stream.getVideoTracks()[0];
+  try {
+    const c = track && track.getCapabilities && track.getCapabilities().zoom;
+    return c && c.max > c.min ? { min: c.min, max: c.max } : null;
+  } catch { return null; }
+}
+export async function setZoom(z) {
+  const track = stream && stream.getVideoTracks()[0];
+  try { await track.applyConstraints({ advanced: [{ zoom: z }] }); return true; } catch { return false; }
 }
 
 export function torchSupported() {

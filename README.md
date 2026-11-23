@@ -31,9 +31,16 @@ Non serve configurare nulla sul server: tutti i percorsi sono relativi.
 
 Al primo uso dello scanner iOS chiede il permesso per la fotocamera. Fai un backup ogni tanto (Impostazioni → Backup).
 
+## Lettura della data: consigli
+
+- Avvicina il telefono finché la data riempie la cornice ed è nitida; evita i riflessi della plastica.
+- Se la fotocamera non mette a fuoco da vicino, usa **Foto nitida**: apre la fotocamera di sistema (messa a fuoco migliore) e l'app cerca la data in tutta la foto.
+- Ogni foto viene letta con più filtri (contrasto, luce irregolare, stampa a punti, sole cifre). Le date senza anno, ammesse per i freschi (es. «28/11»), sono riconosciute e l'anno dedotto viene segnalato da controllare.
+- Se non trova nulla, l'app mostra il testo che ha letto: aiuta a capire se la foto era sfocata.
+
 ## Aggiornare l'app
 
-Dopo aver modificato i file, aumenta `VERSION` in `sw.js` e `APP_VERSION` in `js/version.js`. All'apertura l'app propone «Aggiorna».
+Dopo aver modificato i file, aumenta `VERSION` in `sw.js` e `APP_VERSION` in `js/version.js`. All'apertura l'app propone «Aggiorna». Il sito pubblico è servito da GitHub Pages dal ramo `gh-pages`: dopo un push su `main` aggiorna anche quello (`git push origin main:gh-pages`).
 
 ## Struttura
 
@@ -50,10 +57,11 @@ Dopo aver modificato i file, aumenta `VERSION` in `sw.js` e `APP_VERSION` in `js
 ```sh
 node tests/ocr-parse.test.mjs     # riconoscimento date e diciture
 node tests/static.test.mjs        # testi presenti, file in cache nel service worker
+python3 tests/ocr-bench/gen.py && python3 tests/ocr-bench/run.py new   # banco di prova OCR su etichette difficili
 # end-to-end con Chrome e fotocamera finta (richiede playwright, python-barcode, ffmpeg)
 python3 tests/make_assets.py && python3 tests/e2e.py
 ```
 
 ## Licenze di terze parti
 
-`vendor/zxing` (zxing-wasm, MIT; ZXing-C++, Apache 2.0), `vendor/tesseract` (Tesseract.js e core, Apache 2.0; modello `ita` di tessdata, Apache 2.0). Dati prodotto: Open Food Facts (ODbL).
+`vendor/zxing` (zxing-wasm, MIT; ZXing-C++, Apache 2.0), `vendor/tesseract` (Tesseract.js e core, Apache 2.0; modello `ita` di tessdata, Apache 2.0). Carattere: Archivo (SIL Open Font License). Dati prodotto: Open Food Facts (ODbL).

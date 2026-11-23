@@ -10,7 +10,7 @@ import { lookup, isValidEan, normalizeEan } from '../products.js';
 import { newItem, save, shelvesByLocation, remove } from '../store.js';
 import { sameExpiry } from '../dates.js';
 import { needsChoice } from '../ocr-parse.js';
-import { createScanner, liveBarcode, resourceStatus, readDate, chooseDate, confirmItem } from '../components/scanner.js';
+import { createScanner, liveBarcode, resourceStatus, readDate, readDateFromFile, dateTools, noDateMessage, chooseDate, confirmItem } from '../components/scanner.js';
 import { back, navigate } from '../router.js';
 
 let lastLocation = null;
@@ -128,7 +128,7 @@ export async function render(root, itemId) {
     stopLive?.();
     sc.freeze(null);
     sc.setMode('date');
-    sc.setTopRight(null);
+    sc.setTopRight(dateTools((f) => shoot(null, f)));
     sc.setTitle(draft.ean || existing ? productChip(null) : steps(2));
     if (pendingLookup) pendingLookup.then((r) => { if (alive && sc.frame.dataset.mode === 'date') sc.setTitle(productChip(r.status)); });
     sc.setMessage(cam.ok ? t('scan.dateHint') : t('scan.noCameraHint'), cam.ok ? '' : 'is-warn');
@@ -141,12 +141,13 @@ export async function render(root, itemId) {
       h('button', { type: 'button', class: 'pill', onclick: skipDate }, t('scan.skip'), icon('skip')));
   }
 
-  async function shoot(btn) {
-    btn.disabled = true;
-    btn.classList.add('is-busy');
-    const r = await readDate(sc, { onStage: (s) => sc.setMessage(t('scan.stage.' + s), 'is-busy') });
-    btn.disabled = false;
-    btn.classList.remove('is-busy');
+  async function shoot(btn, file) {
+    const shutter = btn || sc.el.querySelector('.shutter');
+    if (shutter) { shutter.disabled = true; shutter.classList.add('is-busy'); }
+    const onStage = (s, p) => sc.setMessage(t('scan.stage.' + s, p), 'is-busy');
+    const r = file ? await readDateFromFile(file, { onStage }) : await readDate(sc, { onStage });
+    if (file && cam.ok) await sc.resumeCamera();
+    if (shutter) { shutter.disabled = !cam.ok; shutter.classList.remove('is-busy'); }
     if (!alive) return;
     if (r.status === 'ok') {
       await db.bumpStats({ ocrRead: 1 });
@@ -160,7 +161,7 @@ export async function render(root, itemId) {
       return confirm(pick);
     }
     sc.freeze(null);
-    if (r.status === 'none') sc.setMessage(t('scan.noDateFound'), 'is-warn');
+    if (r.status === 'none') sc.setMessage(noDateMessage(r, 'scan.noDateFound'), 'is-warn');
     else if (r.status === 'unavailable') { sc.setMessage(t('res.ocr.offline'), 'is-warn'); confirm(null); }
     else sc.setMessage(t('scan.ocrError'), 'is-warn');
   }
@@ -175,7 +176,7 @@ export async function render(root, itemId) {
     const base = existing || draft;
     const d = { ...base, expiry: candidate ? candidate.exp : base.expiry, expiryKind: candidate ? candidate.kind : base.expiryKind };
     const res = await confirmItem(sc.overlay, d, {
-      source: candidate ? 'ocr' : null, shelves,
+      source: candidate ? 'ocr' : null, yearInferred: !!candidate?.yearInferred, shelves,
       title: d.name || t('confirm.title'),
       primary: existing ? t('common.save') : t('confirm.saveNext'),
       secondary: existing ? null : t('confirm.saveClose'),

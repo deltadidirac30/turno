@@ -6,7 +6,6 @@ import * as camera from '../camera.js';
 import * as barcode from '../barcode.js';
 import * as ocr from '../ocr.js';
 import * as resources from '../resources.js';
-import { extractDates } from '../ocr-parse.js';
 import { formatExpiry, expiryEnd, startOfDay } from '../dates.js';
 import { itemForm } from './forms.js';
 
@@ -60,6 +59,13 @@ export function createScanner({ onClose, title = '', hires = false }) {
       }
     },
     stopCamera() { camera.stop(); camOk = false; },
+    // Dopo la fotocamera di sistema iOS può aver sospeso il flusso: lo riprende o lo riavvia.
+    async resumeCamera() {
+      const tr = video.srcObject && video.srcObject.getVideoTracks()[0];
+      if (!tr || tr.readyState === 'ended') { camera.stop(); return api.startCamera(); }
+      try { await video.play(); } catch {}
+      return { ok: true };
+    },
     freeze(canvas) {
       if (!canvas) { still.hidden = true; return; }
       still.width = canvas.width; still.height = canvas.height;
@@ -115,33 +121,35 @@ export function resourceStatus(name) {
   return node;
 }
 
-// Scatta, legge e interpreta la data. Ritorna {status: 'ok'|'none'|'unavailable'|'error', candidates}
-export async function readDate(scanner, { onStage } = {}) {
+async function ensureOcr(onStage) {
   const ready = await resources.check('ocr');
-  if (ready.status !== 'ready' && ready.status !== 'nocache') {
-    if (!navigator.onLine) return { status: 'unavailable' };
-    onStage?.('download');
-    const ok = await resources.ensure('ocr');
-    if (!ok) return { status: 'unavailable' };
-  }
-  const canvas = camera.grabRegion(scanner.video, scanner.frame, 1600);
+  if (ready.status === 'ready' || ready.status === 'nocache') return true;
+  if (!navigator.onLine) return false;
+  onStage?.('download');
+  return resources.ensure('ocr');
+}
+
+// Il testo letto più lungo, accorciato: mostrato quando non si trova una data,
+// così si capisce se la foto era sfocata o se la data è in un formato non previsto.
+function readSnippet(texts) {
+  const best = (texts || []).map((x) => x.replace(/\s+/g, ' ').trim()).sort((a, b) => b.length - a.length)[0] || '';
+  return best.length > 60 ? best.slice(0, 60) + '…' : best;
+}
+
+// Scatta, legge e interpreta la data. Ritorna {status: 'ok'|'none'|'unavailable'|'error', candidates, snippet}
+export async function readDate(scanner, { onStage } = {}) {
+  if (!(await ensureOcr(onStage))) return { status: 'unavailable' };
+  const canvas = camera.grabRegion(scanner.video, scanner.frame, 2000);
   if (!canvas) return { status: 'error' };
   // Fermo immagine identico all'inquadratura: l'utente vede cosa è stato letto.
   const full = camera.grabFull(scanner.video);
   scanner.freeze(full);
   full.width = full.height = 0;
   try {
-    onStage?.('read');
-    const text1 = await ocr.recognize(canvas, 'plain');
-    self.__turnoLastOcr = text1; // utile per diagnosi (solo in memoria)
-    let r = extractDates(text1);
-    if (!r.candidates.length) {
-      onStage?.('retry');
-      const text2 = await ocr.recognize(canvas, 'dots');
-      const r2 = extractDates(text1 + '\n' + text2);
-      r = r2;
-    }
-    return { status: r.candidates.length ? 'ok' : 'none', candidates: r.candidates, lines: r.lines };
+    onStage?.('read', { i: 1, n: 5 });
+    const r = await ocr.readDatesFrom(canvas, { onPass: (i, n) => onStage?.('read', { i, n }) });
+    self.__turnoLastOcr = r.texts.join('\n'); // utile per diagnosi (solo in memoria)
+    return { status: r.candidates.length ? 'ok' : 'none', candidates: r.candidates, snippet: readSnippet(r.texts) };
   } catch (e) {
     console.warn('OCR', e);
     return { status: 'error' };
@@ -150,7 +158,46 @@ export async function readDate(scanner, { onStage } = {}) {
   }
 }
 
+// Foto a piena risoluzione con la fotocamera di sistema (messa a fuoco ravvicinata migliore).
+export async function readDateFromFile(file, { onStage } = {}) {
+  if (!(await ensureOcr(onStage))) return { status: 'unavailable' };
+  let bmp;
+  try {
+    bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(file));
+    onStage?.('read', { i: 1, n: 5 });
+    const r = await ocr.readDatesFrom(bmp, { whole: true, onPass: (i, n) => onStage?.('read', { i, n }) });
+    self.__turnoLastOcr = r.texts.join('\n');
+    return { status: r.candidates.length ? 'ok' : 'none', candidates: r.candidates, snippet: readSnippet(r.texts) };
+  } catch (e) {
+    console.warn('OCR foto', e);
+    return { status: 'error' };
+  } finally {
+    bmp?.close?.(); // la foto viene scartata
+  }
+}
+
+// Strumenti del passo «data»: zoom (se la fotocamera lo consente) e foto nitida di sistema.
+export function dateTools(onFile) {
+  const nodes = [];
+  const zc = camera.zoomRange();
+  if (zc && zc.max >= 1.8) {
+    const levels = [zc.min, Math.min(2, zc.max), Math.min(3, zc.max)].filter((v, i, a) => a.indexOf(v) === i);
+    let k = 0;
+    const b = h('button', { type: 'button', class: 'pill pill-sm', 'aria-label': t('scan.zoom') }, '1×');
+    b.addEventListener('click', async () => { k = (k + 1) % levels.length; await camera.setZoom(levels[k]); b.textContent = `${Math.round(levels[k] * 10) / 10}×`; });
+    nodes.push(b);
+  }
+  const file = h('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+  file.addEventListener('change', () => { const f = file.files && file.files[0]; file.value = ''; if (f) onFile(f); });
+  nodes.push(h('button', { type: 'button', class: 'pill pill-sm', onclick: () => file.click() }, icon('photo'), t('scan.sharpPhoto')), file);
+  return h('div', { class: 'tools-row' }, nodes);
+}
+
 export function kindLabel(kind) { return t('kind.' + kind); }
+
+export function noDateMessage(r, key) {
+  return h('span', {}, t(key), r.snippet ? h('span', { class: 'snippet' }, t('scan.readSnippet', { text: r.snippet })) : null);
+}
 
 // Scelta tra più date lette, con il testo vicino.
 export function chooseDate(host, candidates) {
@@ -161,7 +208,7 @@ export function chooseDate(host, candidates) {
       h('div', { class: 'choices' }, candidates.slice(0, 5).map((c, i) =>
         h('button', { type: 'button', class: 'choice' + (i === 0 ? ' is-top' : ''), onclick: () => close(c) },
           h('span', { class: 'choice-date' }, formatExpiry(c.exp)),
-          h('span', { class: 'choice-kind' }, [kindLabel(c.kind), c.exp.d == null ? t('date.monthOnlyShort') : '', expiryEnd(c.exp) < startOfDay() ? t('choose.past') : ''].filter(Boolean).join(' · ')),
+          h('span', { class: 'choice-kind' }, [kindLabel(c.kind), c.exp.d == null ? t('date.monthOnlyShort') : '', expiryEnd(c.exp) < startOfDay() ? t('choose.past') : ''].filter(Boolean).join(', ')),
           h('span', { class: 'choice-ctx' }, '“' + c.context + '”')))),
       h('div', { class: 'sheet-actions' },
         h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close('none') }, t('choose.none')),
@@ -170,9 +217,9 @@ export function chooseDate(host, candidates) {
 }
 
 // Conferma/correzione prima del salvataggio. Ritorna {action, item, dateSource}.
-export function confirmItem(host, item, { source = null, shelves = {}, title, primary, secondary, extra = [] } = {}) {
+export function confirmItem(host, item, { source = null, yearInferred = false, shelves = {}, title, primary, secondary, extra = [] } = {}) {
   return sheet((close, panel) => {
-    const form = itemForm(item, { compact: true, shelves, source });
+    const form = itemForm(item, { compact: true, shelves, source, yearInferred });
     const err = h('p', { class: 'form-err', 'aria-live': 'assertive' });
     const submit = (action) => {
       const r = form.read();

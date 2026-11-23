@@ -2,7 +2,7 @@
 import { h, icon, clear, toast } from '../util.js';
 import { t, lang } from '../i18n.js';
 import * as db from '../db.js';
-import { urgency, sortKey, formatShort, formatMonth, formatDate, precision } from '../dates.js';
+import { urgency, sortKey, formatShort, precision } from '../dates.js';
 import { consumeOne, isIncomplete, missing } from '../store.js';
 import { navigate } from '../router.js';
 
@@ -20,9 +20,13 @@ export async function render(root) {
   const incomplete = items.filter(isIncomplete);
 
   const summary = h('p', { class: 'summary' }, summaryText(counts, items.length));
-  const header = h('header', { class: 'top' },
-    h('div', { class: 'top-row' }, h('h1', {}, t('home.title')),
-      h('button', { type: 'button', class: 'btn btn-small btn-ghost', onclick: () => navigate('#/add') }, icon('plus'), t('home.addManual'))),
+  const today = new Intl.DateTimeFormat(lang(), { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  const header = h('header', { class: 'top top-home' },
+    h('div', { class: 'brandrow' },
+      h('span', { class: 'wordmark' }, t('app.name')),
+      h('span', { class: 'today' }, today),
+      h('button', { type: 'button', class: 'link-btn', onclick: () => navigate('#/add') }, icon('plus'), t('home.addManual'))),
+    h('h1', {}, t('home.title')),
     summary);
 
   const banners = h('div', { class: 'banners' });
@@ -108,33 +112,34 @@ function summaryText(c, total) {
   if (c.expired) parts.push(t('home.sumExpired', { n: c.expired }));
   if (c.today) parts.push(t('home.sumToday', { n: c.today }));
   if (c.soon) parts.push(t('home.sumSoon', { n: c.soon }));
-  return parts.length ? parts.join(' · ') : t('home.sumCalm');
+  return parts.length ? parts.join(', ') : t('home.sumCalm');
 }
 
-// Etichetta testuale dell'urgenza (mai solo colore).
+// Etichetta della scadenza come un bollino da supermercato: data grande e stato a parole
+// (il colore non è mai l'unico segnale).
 export function whenLabel(item) {
   const u = urgency(item);
-  const L = lang();
   if (u.level === 'none') return { big: '—', small: missing(item).includes('date') ? t('row.missingDate') : t('row.noDate') };
   const p = u.dl.precision;
   if (p !== 'day') {
     // Solo mese/anno: niente giorno inventato.
-    const big = p === 'month' ? formatMonth(item.expiry, L) : String(item.expiry.y);
+    const big = p === 'month' ? `${String(item.expiry.m).padStart(2, '0')}.${item.expiry.y}` : String(item.expiry.y);
     return { big, small: u.level === 'expired' ? t('row.expired') : t(p === 'month' ? 'row.monthOnly' : 'row.yearOnly') };
   }
-  const short = formatShort(u.dl.date, L);
-  if (u.level === 'expired') return { big: t('row.expired'), small: short };
-  if (u.level === 'today') return { big: t('row.today'), small: short };
-  if (u.days === 1) return { big: t('row.tomorrow'), small: short };
-  if (u.days <= 7) return { big: t('row.inDays', { n: u.days }), small: short };
-  return { big: short, small: String(u.dl.date.getFullYear()) };
+  const d = u.dl.date;
+  const big = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+  if (u.level === 'expired') return { big, small: u.days === -1 ? t('row.expiredYesterday') : t('row.expiredDays', { n: -u.days }) };
+  if (u.level === 'today') return { big, small: t('row.today') };
+  if (u.days === 1) return { big, small: t('row.tomorrow') };
+  if (u.days <= 45) return { big, small: t('row.inDays', { n: u.days }) };
+  return { big, small: String(d.getFullYear()) };
 }
 
 export function row(item, onChange) {
   const u = urgency(item);
   const w = whenLabel(item);
   const meta = [];
-  if (item.location) meta.push(t('loc.' + item.location) + (item.shelf ? ' · ' + item.shelf : ''));
+  if (item.location) meta.push(t('loc.' + item.location) + (item.shelf ? ', ' + item.shelf : ''));
   if (item.qty > 1) meta.push('×' + item.qty);
   if (item.openedAt) meta.push(u.dl?.source === 'opened' ? t('row.openedUntil', { date: formatShort(u.dl.date, lang()) }) : t('row.opened'));
   if (item.expiryKind === 'best_before' && precision(item.expiry) !== 'none') meta.push(t('kind.best_before_short'));
@@ -154,10 +159,10 @@ export function row(item, onChange) {
 
   return h('li', { class: `row lv-${u.level}${miss.length ? ' is-incomplete' : ''}` },
     h('a', { class: 'row-main', href: '#/item/' + item.id },
-      h('span', { class: 'when' }, h('span', { class: 'when-big' }, w.big), h('span', { class: 'when-small' }, w.small)),
+      h('span', { class: 'stk' }, h('span', { class: 'stk-big' }, w.big), h('span', { class: 'stk-small' }, w.small)),
       h('span', { class: 'what' },
         h('span', { class: 'name' }, item.name || h('em', {}, t('item.unnamed'))),
-        h('span', { class: 'meta' }, [item.brand, ...meta].filter(Boolean).join(' · ')),
+        h('span', { class: 'meta' }, [item.brand, ...meta].filter(Boolean).join(', ')),
         miss.length ? h('span', { class: 'tag tag-todo' }, t('row.todo.' + miss[0])) : null)),
     eat);
 }

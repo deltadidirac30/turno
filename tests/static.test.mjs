@@ -12,7 +12,7 @@ const dyn = {
   'camera.': ['denied', 'nocamera', 'unsupported', 'error'].flatMap((c) => [`${c}.title`, `${c}.text`]),
   'date.err.': ['digits', 'year', 'month', 'invalid', 'fix'],
   'kind.': ['use_by', 'best_before', 'unknown'], 'loc.': ['fridge', 'freezer', 'pantry'],
-  'row.todo.': ['date', 'name'], 'scan.stage.': ['download', 'read', 'retry'],
+  'row.todo.': ['date', 'name'], 'scan.stage.': ['download', 'read'],
   'sec.': ['expired', 'today', 'soon', 'week', 'later', 'none'],
   'settings.res.': ['ready', 'missing', 'downloading', 'error', 'nocache', 'unknown', 'barcode', 'ocr', 'barcodeDesc', 'ocrDesc'],
   'res.': ['barcode', 'ocr'].flatMap((n) => ['downloading', 'error', 'missing', 'offline'].map((s) => `${n}.${s}`)),
@@ -23,7 +23,7 @@ for (const k of used) if (!(k in it)) { console.log('FAIL chiave mancante:', k);
 for (const k of Object.keys(it)) if (!used.has(k) && !['app.name', 'app.tagline'].includes(k)) console.log('nota: chiave non usata', k);
 const sw = readFileSync(join(root, 'sw.js'), 'utf8');
 const listed = new Set([...sw.matchAll(/^\s+'([^']+)',$/gm)].map((m) => m[1]));
-const files = [...walk(join(root, 'js')), ...walk(join(root, 'css')), ...walk(join(root, 'icons'))].map((f) => f.slice(root.length));
+const files = [...walk(join(root, 'js')), ...walk(join(root, 'css')), ...walk(join(root, 'icons')), ...walk(join(root, 'fonts')).filter((f) => f.endsWith('.woff2'))].map((f) => f.slice(root.length));
 for (const f of files) if (!listed.has(f)) { console.log('FAIL non in cache SW:', f); fail++; }
 for (const f of listed) if (f !== './' && !files.includes(f) && !['index.html', 'manifest.webmanifest'].includes(f)) { console.log('FAIL in SW ma inesistente:', f); fail++; }
 const v1 = /VERSION = '([^']+)'/.exec(sw)[1]; const v2 = /APP_VERSION = '([^']+)'/.exec(readFileSync(join(root, 'js/version.js'), 'utf8'))[1];
