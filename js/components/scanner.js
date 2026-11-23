@@ -159,13 +159,24 @@ export async function readDate(scanner, { onStage } = {}) {
 }
 
 // Foto a piena risoluzione con la fotocamera di sistema (messa a fuoco ravvicinata migliore).
-export async function readDateFromFile(file, { onStage } = {}) {
+// L'utente tocca la data sulla foto: si legge solo quella fascia, come nella cornice.
+export async function readDateFromFile(file, { onStage, host } = {}) {
   if (!(await ensureOcr(onStage))) return { status: 'unavailable' };
   let bmp;
   try {
     bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(file));
+    const pick = host ? await pickRegion(host, bmp) : { whole: true };
+    if (!pick) return { status: 'cancel' };
+    let src = bmp;
+    if (!pick.whole) {
+      const c = document.createElement('canvas');
+      c.width = pick.w; c.height = pick.h;
+      c.getContext('2d').drawImage(bmp, pick.x, pick.y, pick.w, pick.h, 0, 0, pick.w, pick.h);
+      src = c;
+    }
     onStage?.('read', { i: 1, n: 5 });
-    const r = await ocr.readDatesFrom(bmp, { whole: true, onPass: (i, n) => onStage?.('read', { i, n }) });
+    const r = await ocr.readDatesFrom(src, { whole: !!pick.whole, onPass: (i, n) => onStage?.('read', { i, n }) });
+    if (src !== bmp) src.width = src.height = 0;
     self.__turnoLastOcr = r.texts.join('\n');
     return { status: r.candidates.length ? 'ok' : 'none', candidates: r.candidates, snippet: readSnippet(r.texts) };
   } catch (e) {
@@ -174,6 +185,41 @@ export async function readDateFromFile(file, { onStage } = {}) {
   } finally {
     bmp?.close?.(); // la foto viene scartata
   }
+}
+
+// Mostra la foto e chiede di toccare la data. Ritorna la fascia da leggere, {whole:true} o null.
+function pickRegion(host, bmp) {
+  return new Promise((resolve) => {
+    const W = bmp.width, H = bmp.height;
+    const cv = h('canvas', { class: 'pick-img' });
+    const k = Math.min(1, 1600 / Math.max(W, H));
+    cv.width = Math.round(W * k); cv.height = Math.round(H * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const mark = h('div', { class: 'pick-mark', hidden: true });
+    const done = (v) => { wrap.remove(); cv.width = cv.height = 0; resolve(v); };
+    const wrap = h('div', { class: 'pick' },
+      h('div', { class: 'pick-stage' }, cv, mark),
+      h('p', { class: 'pick-hint' }, t('scan.pickHint')),
+      h('div', { class: 'pick-actions' },
+        h('button', { type: 'button', class: 'pill', onclick: () => done(null) }, t('common.cancel')),
+        h('button', { type: 'button', class: 'pill', onclick: () => done({ whole: true }) }, t('scan.pickWhole'))));
+    cv.addEventListener('click', (e) => {
+      const r = cv.getBoundingClientRect();
+      // il canvas è mostrato con object-fit: contain
+      const s = Math.min(r.width / cv.width, r.height / cv.height);
+      const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
+      const px = (e.clientX - r.left - ox) / s / k, py = (e.clientY - r.top - oy) / s / k;
+      if (px < 0 || py < 0 || px > W || py > H) return;
+      // fascia larga quanto quasi tutta la foto e alta ~1/7: come la cornice dello scanner
+      const bw = Math.round(W * 0.9), bh = Math.round(Math.min(H, W) * 0.2);
+      const x = Math.max(0, Math.min(W - bw, Math.round(px - bw / 2)));
+      const y = Math.max(0, Math.min(H - bh, Math.round(py - bh / 2)));
+      Object.assign(mark.style, { left: `${ox + x * k * s}px`, top: `${oy + y * k * s}px`, width: `${bw * k * s}px`, height: `${bh * k * s}px` });
+      mark.hidden = false;
+      setTimeout(() => done({ x, y, w: bw, h: bh }), 180);
+    });
+    host.append(wrap);
+  });
 }
 
 // Strumenti del passo «data»: zoom (se la fotocamera lo consente) e foto nitida di sistema.

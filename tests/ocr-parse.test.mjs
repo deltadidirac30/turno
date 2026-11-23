@@ -37,4 +37,6 @@ check('9 letto al posto di 0', 'DA CONS. ENTRO 94.12.26', { list: ['4/12/2026:us
 check('consumarsi storpiato', 'DA COMSUMARSI ENTRA 26/11/26', { list: ['26/11/2026:use_by'] });
 check('separatori strani', 'TNC 15,03*2827', { list: ['15/3/2027:best_before'] });
 check('prezzi con virgola', 'PREZZO 1,99 EUR 3,50', { list: [] });
+check('anno illeggibile', '01 11 202° 11550', { list: ['1/11/2026:unknown'] });
+check('spazi e anno intero', '01 11 2026 L1550', { list: ['1/11/2026:unknown'] });
 process.exit(fail ? 1 : 0);

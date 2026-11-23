@@ -363,10 +363,11 @@ export async function render(root) {
       const shutter = btn || sc.el.querySelector('.shutter');
       if (shutter) { shutter.disabled = true; shutter.classList.add('is-busy'); }
       const onStage = (s, p) => sc.setMessage(t('scan.stage.' + s, p), 'is-busy');
-      const r = file ? await readDateFromFile(file, { onStage }) : await readDate(sc, { onStage });
+      const r = file ? await readDateFromFile(file, { onStage, host: sc.overlay }) : await readDate(sc, { onStage });
       if (file && cam.ok) await sc.resumeCamera();
       if (shutter) { shutter.disabled = !cam.ok; shutter.classList.remove('is-busy'); }
       if (!alive) return;
+      if (r.status === 'cancel') { sc.freeze(null); sc.setMessage(t('scan.dateHint')); return; }
       if (r.status === 'ok') {
         await db.bumpStats({ ocrRead: 1 });
         sc.setMessage(t('scan.dateHint'));

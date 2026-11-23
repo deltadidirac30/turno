@@ -6,6 +6,7 @@
 // le date trovate più volte guadagnano fiducia. Ci si ferma appena la lettura è sicura.
 import { url, ocrCorePath } from './resources.js';
 import { extractDates, mergeResults, isConfident } from './ocr-parse.js';
+import * as P from './ocr-prep.js';
 
 let workerP = null;
 
@@ -149,51 +150,105 @@ function toCanvas({ w, h, g }, pad = 16) {
   return c;
 }
 
-// Le passate, dalla più rapida alla più insistente.
-const PASSES = [
-  { prep: 'gray', psm: '6' },
-  { prep: 'adaptive', psm: '6' },
-  { prep: 'dots', psm: '6' },
-  { prep: 'adaptive', psm: '6', digits: true },
-  { prep: 'dots', psm: '11', digits: true },
-];
-const DIGITS = '0123456789/.-';
+const DIGITS = '0123456789/.-:';
 
-function prepare(base, prep) {
-  if (prep === 'gray') return toCanvas(base);
-  if (prep === 'adaptive') return toCanvas(adaptive(base));
-  // stampa a punti: sfocatura proporzionale all'altezza, poi soglia locale
-  const r = Math.max(2, Math.min(7, Math.round(base.h / 110)));
-  return toCanvas(adaptive(normalize(blur(base, r)), 0.1));
+function grayOf(src, targetH, maxW) {
+  const sw = src.width, sh = src.height;
+  let k = targetH / sh;
+  if (sw * k > maxW) k = maxW / sw;
+  const w = Math.max(1, Math.round(sw * k)), h = Math.max(1, Math.round(sh * k));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  const g = P.grayFromRGBA(ctx.getImageData(0, 0, w, h).data, w, h);
+  c.width = c.height = 0;
+  return g;
 }
 
-// Legge le date da un ritaglio (cornice dello scanner) o da una foto intera.
+function bitmapCanvas(bm, pad = 12) {
+  // riga binaria → canvas scalato all'altezza giusta per Tesseract, con margine bianco
+  const src = toCanvas(bm, 0);
+  const w = Math.max(1, Math.round(bm.w * bm.scale)), h = Math.max(1, Math.round(bm.h * bm.scale));
+  const c = document.createElement('canvas');
+  c.width = w + 2 * pad; c.height = h + 2 * pad;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, pad, pad, w, h);
+  src.width = src.height = 0;
+  return c;
+}
+
+const LINE_PASSES = [
+  { psm: '7' },
+  { psm: '13' },
+  { psm: '7', digits: true },
+];
+
+// Legge le date da un ritaglio (la cornice dello scanner) o da una foto intera.
 // Ritorna {candidates, all, texts}.
 export async function readDatesFrom(src, { onPass, now = new Date(), whole = false, signal } = {}) {
   const worker = await getWorker();
-  // Ritaglio: altezza utile ~360 px (le cifre stampate diventano alte 50–120 px).
-  // Foto intera: lato lungo max 2000 px e ricerca di testo sparso.
-  const base = whole ? normalize(toGray(src, Math.min(src.height, 2000 * src.height / Math.max(src.width, src.height)), 2000))
-    : normalize(toGray(src, Math.max(240, Math.min(420, src.height * 3)), 2200));
+  const gray = whole ? grayOf(src, 1000, 1400) : grayOf(src, 300, 1600);
+  const { lines, flat } = P.candidateLines(gray, { whole });
+  const top = lines.slice(0, whole ? 12 : 6);
   const results = [];
   const texts = [];
-  let last = '';
-  for (let i = 0; i < PASSES.length; i++) {
-    if (signal?.aborted) break;
-    const p = PASSES[i];
-    onPass?.(i + 1, PASSES.length);
-    const params = { tessedit_pageseg_mode: whole ? '11' : p.psm, tessedit_char_whitelist: p.digits ? DIGITS : '' };
-    if (JSON.stringify(params) !== last) { await worker.setParameters(params); last = JSON.stringify(params); }
-    const img = prepare(base, p.prep);
-    const { data } = await worker.recognize(img);
-    img.width = img.height = 0;
-    const text = data.text || '';
-    texts.push(text);
-    results.push(extractDates(text, { now }));
-    const merged = mergeResults(results);
-    if (isConfident(merged)) return { ...merged, texts };
+  let params = '';
+  const setP = async (p) => {
+    const want = JSON.stringify(p);
+    if (want !== params) { await worker.setParameters(p); params = want; }
+  };
+  const total = top.length + (whole ? 0 : 1);
+  let step = 0;
+  // 1. tutto il ritaglio insieme: serve a trovare le diciture («da consumarsi entro»)
+  if (!whole) {
+    onPass?.(++step, total);
+    await setP({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
+    const c = toCanvas(flat);
+    const { data } = await worker.recognize(c);
+    c.width = c.height = 0;
+    texts.push(data.text || '');
+    results.push({ ...extractDates(data.text || '', { now }), src: 'crop' });
   }
-  await worker.setParameters({ tessedit_char_whitelist: '' });
+  // 2. le righe candidate una alla volta, dalla più promettente
+  const lineText = new Map();
+  for (const L of top) {
+    if (signal?.aborted) break;
+    onPass?.(++step, total);
+    const c = bitmapCanvas(P.lineBitmap(L));
+    for (const p of LINE_PASSES) {
+      await setP({ tessedit_pageseg_mode: p.psm, tessedit_char_whitelist: p.digits ? DIGITS : '' });
+      const { data } = await worker.recognize(c);
+      const text = (data.text || '').trim();
+      if (!text) continue;
+      texts.push(text);
+      if (!lineText.has(L)) lineText.set(L, text);
+      results.push({ ...extractDates(text, { now }), src: 'line' + L.box.map((v) => Math.round(v / 20)).join(',') });
+    }
+    c.width = c.height = 0;
+    if (isConfident(mergeResults(results))) break;
+  }
+  // 3. le righe nell'ordine della confezione: una dicitura sopra la data vale anche per lei
+  const doc = [...lineText.entries()].sort((a, b) => a[0].box[1] - b[0].box[1]).map(([, t]) => t).join('\n');
+  if (doc) results.push({ ...extractDates(doc, { now }), src: 'doc' });
+  // 4. se non basta, tutto il ritaglio con i filtri classici (soglia locale, punti sfocati)
+  if (!whole && !mergeResults(results).candidates.length) {
+    const base = normalize(toGray(src, Math.max(240, Math.min(420, src.height * 3)), 2200));
+    for (const prep of ['adaptive', 'dots']) {
+      if (signal?.aborted) break;
+      await setP({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
+      const img = prep === 'adaptive' ? toCanvas(adaptive(base)) : toCanvas(adaptive(normalize(blur(base, Math.max(2, Math.min(5, Math.round(base.h / 110))))), 0.1));
+      const { data } = await worker.recognize(img);
+      img.width = img.height = 0;
+      texts.push(data.text || '');
+      results.push({ ...extractDates(data.text || '', { now }), src: prep });
+      if (isConfident(mergeResults(results))) break;
+    }
+  }
+  await setP({ tessedit_pageseg_mode: '6', tessedit_char_whitelist: '' });
   return { ...mergeResults(results), texts };
 }
 
@@ -203,3 +258,6 @@ export async function recognize(canvas) {
   const { data } = await worker.recognize(toCanvas(normalize(toGray(canvas, 360, 2200))));
   return data.text || '';
 }
+
+// Solo per i test del banco di prova.
+export const _debug = { toGray, normalize, blur, adaptive, toCanvas, getWorker, P };

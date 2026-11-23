@@ -34,8 +34,8 @@ Al primo uso dello scanner iOS chiede il permesso per la fotocamera. Fai un back
 ## Lettura della data: consigli
 
 - Avvicina il telefono finché la data riempie la cornice ed è nitida; evita i riflessi della plastica.
-- Se la fotocamera non mette a fuoco da vicino, usa **Foto nitida**: apre la fotocamera di sistema (messa a fuoco migliore) e l'app cerca la data in tutta la foto.
-- Ogni foto viene letta con più filtri (contrasto, luce irregolare, stampa a punti, sole cifre). Le date senza anno, ammesse per i freschi (es. «28/11»), sono riconosciute e l'anno dedotto viene segnalato da controllare.
+- Se la fotocamera non mette a fuoco da vicino, usa **Foto nitida**: apre la fotocamera di sistema (messa a fuoco migliore), poi tocchi la data sulla foto.
+- La foto viene ripulita prima dell'OCR: luce resa uniforme, punti della stampa a getto uniti, righe di testo isolate e lette una per una (le scritte piccole come ore e lotti restano separate). Le date senza anno dei freschi (es. «28/11») sono riconosciute e l'anno dedotto viene segnalato da controllare.
 - Se non trova nulla, l'app mostra il testo che ha letto: aiuta a capire se la foto era sfocata.
 
 ## Aggiornare l'app

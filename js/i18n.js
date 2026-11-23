@@ -170,6 +170,8 @@ const STRINGS = {
     'scan.noDateFound': 'Nessuna data trovata. Avvicina finché è nitida, evita i riflessi, oppure prova «Foto nitida».',
     'scan.readSnippet': 'Ho letto: «{text}»',
     'scan.sharpPhoto': 'Foto nitida',
+    'scan.pickHint': 'Tocca la data sulla foto',
+    'scan.pickWhole': 'Cerca in tutta la foto',
     'scan.zoom': 'Zoom',
     'scan.ocrError': 'Lettura non riuscita. Riprova o scrivi la data.',
 

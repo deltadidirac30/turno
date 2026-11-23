@@ -111,6 +111,18 @@ const PATTERNS = [
       if ((cand - startOfDay(now)) / 86400000 < -45) y += 1; // già passata da tempo: è dell'anno prossimo
       return { exp: { d: d.n, m: mo.n, y }, fixes: [d, mo].filter((x) => x.fixed).length, yearInferred: true, short: m[2].length < 2 || m[3].length < 2 };
     }, base: 14 },
+  // 01 11 2026: con l'anno a quattro cifre gli spazi bastano (un lotto non ha questa forma)
+  { name: 'spaced4', re: /(^|[^\d])(\d{2}) {1,2}(\d{2}) {1,2}(20\d{2})(?!\d)/g,
+    build: (m, Y) => { const d = part(m[2], 31), mo = part(m[3], 12), y = year(m[4], Y); return { exp: { d: d.n, m: mo.n, y: y.y }, fixes: [d, mo, y].filter((x) => x.fixed).length }; }, base: 22 },
+  // 01 11 202? con l'anno illeggibile (stampa difettosa): giorno e mese, anno dedotto e segnalato
+  { name: 'spacedPartial', re: /(^|[^\d])(\d{2}) {1,2}(\d{2}) {1,2}20(?:\d(?!\d)|(?!\d))/g,
+    build: (m, Y, now) => {
+      const d = +m[2], mo = +m[3];
+      if (mo < 1 || mo > 12 || d < 1 || d > daysInMonth(now.getFullYear(), mo)) return null;
+      let y = now.getFullYear();
+      if ((new Date(y, mo - 1, d) - startOfDay(now)) / 86400000 < -45) y += 1;
+      return { exp: { d, m: mo, y }, fixes: 0, yearInferred: true };
+    }, base: 16 },
   { name: 'spaced', re: /(^|[^\d])(\d{2}) (\d{2}) (\d{4}|\d{2})(?!\d)/g,
     build: (m, Y) => { const y = year(m[4], Y); return { exp: { d: +m[2], m: +m[3], y: y.y }, fixes: y.fixed ? 1 : 0 }; }, base: 12, needsKeyword: true },
   { name: 'compact', re: /(^|[^\d])(\d{2})(\d{2})(\d{4}|\d{2})(?!\d)/g,
@@ -176,7 +188,7 @@ export function extractDates(text, { now = new Date() } = {}) {
         if (kwType === 'production') score -= [60, 25, 10][kwDist];
         score -= built.fixes * 7;
         const daysLeft = Math.round((expiryEnd(exp) - today) / 86400000);
-        if (daysLeft < -1) score -= 20;
+        if (daysLeft < -1 && !built.yearInferred) score -= daysLeft < -60 ? 20 : 6; // già scaduta: possibile, meno probabile
         else if (daysLeft <= 900) score += 5;
 
         const kind = kwType === 'best_before' ? 'best_before' : (kwType === 'use_by' ? 'use_by' : 'unknown');
@@ -223,21 +235,22 @@ function dedupe(found) {
 
 // Unisce i risultati di più letture della stessa foto: una data trovata più volte guadagna fiducia.
 export function mergeResults(results) {
+  // results: [{all, src}] — src identifica la zona letta (più letture della stessa riga contano una volta)
   const byKey = new Map();
   for (const r of results) {
     for (const c of r.all) {
       const key = keyOf(c.exp);
       const prev = byKey.get(key);
-      if (!prev) { byKey.set(key, { ...c, hits: 1 }); continue; }
-      const best = c.score > prev.score ? { ...c, hits: prev.hits } : prev;
-      best.hits = prev.hits + 1;
+      if (!prev) { byKey.set(key, { ...c, srcs: new Set([r.src ?? Math.random()]) }); continue; }
+      const best = c.score > prev.score ? { ...c, srcs: prev.srcs } : prev;
+      best.srcs.add(r.src ?? Math.random());
       if (best.kind === 'unknown') best.kind = c.kind !== 'unknown' ? c.kind : prev.kind;
       best.yearInferred = prev.yearInferred && c.yearInferred;
       if (prev.context.length > best.context.length && /[A-Z]{3}/i.test(prev.context)) best.context = prev.context;
       byKey.set(key, best);
     }
   }
-  const all = [...byKey.values()].map((c) => ({ ...c, score: c.score + Math.min(3, c.hits - 1) * 6 }));
+  const all = [...byKey.values()].map((c) => { const hits = c.srcs.size; const { srcs, ...rest } = c; return { ...rest, hits, score: c.score + Math.min(3, hits - 1) * 8 }; });
   all.sort((a, b) => b.score - a.score);
   return { candidates: all.filter((c) => c.score >= 15 && !c.production), all };
 }
@@ -256,5 +269,5 @@ export function isConfident(result) {
   const top = result.candidates[0];
   if (!top) return false;
   if (top.score >= 60 && !top.yearInferred) return true;
-  return (top.hits || 1) >= 2 && top.score >= 35;
+  return (top.hits || 1) >= 2 && top.score >= 30;
 }
