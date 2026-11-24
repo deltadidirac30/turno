@@ -39,4 +39,6 @@ check('separatori strani', 'TNC 15,03*2827', { list: ['15/3/2027:best_before'] }
 check('prezzi con virgola', 'PREZZO 1,99 EUR 3,50', { list: [] });
 check('anno illeggibile', '01 11 202° 11550', { list: ['1/11/2026:unknown'] });
 check('spazi e anno intero', '01 11 2026 L1550', { list: ['1/11/2026:unknown'] });
+check('stampa a punti T e D', 'D6.01.2T', { list: ['6/1/2027:unknown'] });
+check('anno stampato male', '01 11 2020 L1550', { list: ['1/11/2026:unknown'] });
 process.exit(fail ? 1 : 0);

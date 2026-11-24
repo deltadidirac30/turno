@@ -3,6 +3,7 @@ import { h, icon } from '../util.js';
 import { t } from '../i18n.js';
 import { fieldsToExpiry, expiryToFields, sameExpiry, addDays, parseYMD, formatDate, ymd } from '../dates.js';
 import { LOCATIONS } from '../store.js';
+import { extractDates } from '../ocr-parse.js';
 
 function seg(options, value, onPick, { cls = '', label } = {}) {
   const wrap = h('div', { class: 'seg ' + cls, role: 'radiogroup', 'aria-label': label });
@@ -60,9 +61,31 @@ export function dateFields({ expiry = null, kind = 'unknown', noDate = false, so
     h('span', { class: 'dp-sep', 'aria-hidden': 'true' }, '/'),
     h('label', { class: 'dp dp-wide' }, h('span', { class: 'dp-lab' }, t('date.year')), yIn));
 
+  // «Scansiona testo» dell'iPhone (Testo dal vivo): l'OCR di sistema scrive il testo nel campo,
+  // Turno ne ricava la data. Funziona anche incollando un testo.
+  const scanIn = h('input', { class: 'in in-sm', type: 'text', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false',
+    placeholder: t('date.scanTextPh'), 'aria-label': t('date.scanText'), enterkeyhint: 'done' });
+  const scanNote = h('p', { class: 'dnote' }, t('date.scanTextHint'));
+  const scanBox = h('div', { class: 'scanbox' }, h('span', { class: 'flabel flabel-sm' }, t('date.scanText')), scanIn, scanNote);
+  let scanTimer;
+  scanIn.addEventListener('input', () => {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(() => {
+      const text = scanIn.value.trim();
+      if (!text) { scanNote.textContent = t('date.scanTextHint'); return; }
+      const r = extractDates(text);
+      if (!r.candidates.length) { scanNote.textContent = t('date.scanTextNone'); return; }
+      const c = r.candidates[0];
+      yearInferred = !!c.yearInferred;
+      api.set(c.exp, c.kind !== 'unknown' ? c.kind : null, 'ocr');
+      scanNote.textContent = r.candidates.length > 1 ? t('date.scanTextMany', { n: r.candidates.length }) : t('date.scanTextOk');
+      onChange?.();
+    }, 250);
+  });
+
   const el = h('fieldset', { class: 'datef' + (source === 'ocr' ? ' from-ocr' : '') },
     h('legend', { class: 'flabel' }, t('form.expiry')),
-    fields, note, kindSeg.el, h('div', { class: 'row-end' }, noDateBtn));
+    fields, note, kindSeg.el, h('div', { class: 'row-end' }, noDateBtn), scanBox);
 
   // Avanzamento automatico tra i campi e incolla di una data intera.
   const order = [dIn, mIn, yIn];
@@ -125,7 +148,7 @@ export function dateFields({ expiry = null, kind = 'unknown', noDate = false, so
   }
   refresh();
 
-  return {
+  const api = {
     el, read,
     get source() { return state.source; },
     set(exp, k, source = null) {
@@ -140,6 +163,7 @@ export function dateFields({ expiry = null, kind = 'unknown', noDate = false, so
     focus() { (dIn.value ? yIn : dIn).focus(); },
     setNoDate,
   };
+  return api;
 }
 
 // Scheda completa di una confezione. compact = versione nello scanner (meno campi).

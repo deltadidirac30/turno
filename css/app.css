@@ -206,6 +206,8 @@ select.in { appearance: none; -webkit-appearance: none; padding-right: 28px; bac
 .dnote.is-error { color: var(--red); font-weight: 650; }
 .dnote.is-warn { color: var(--ink); font-weight: 650; }
 .row-end { display: flex; justify-content: flex-start; }
+.scanbox { display: grid; gap: 6px; margin-top: 6px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.flabel-sm { font-size: 14px; }
 .row-start { display: flex; }
 
 .seg { display: flex; background: var(--sunk); border-radius: var(--r-md); padding: 3px; gap: 3px; }

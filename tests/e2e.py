@@ -139,7 +139,7 @@ async def run2(p):
     # correzione: giorno e anno (l'OCR può confondere 6 e 4)
     await page.locator('.scan-overlay .dp-d').fill('27')
     await page.locator('.scan-overlay .dp-y').fill('2026')
-    note = await page.locator('.scan-overlay .dnote').inner_text()
+    note = await page.locator('.scan-overlay .datef > .dnote').inner_text()
     ok('correzione segnalata', 'Corretta' in note, note)
     await page.locator('.scan-overlay .form input.in').first.fill('Mozzarella')
     print('   sheet style', await page.evaluate("() => [...document.querySelectorAll('.scan-overlay .sheet')].map(e => { const c = getComputedStyle(e); return [c.opacity, c.backgroundColor, e.parentElement.className]; })"))

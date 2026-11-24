@@ -242,7 +242,12 @@ export function findLines(ink, w, h, { minH = h * 0.07, maxH = h * 0.75 } = {}) 
       for (const d of chars) { const dd = Math.abs(d.x + d.w / 2 - (t.x + t.w / 2)); if (dd < nd) { nd = dd; near = d; } }
       if (t.y >= near.y - 0.15 * mh && t.y + t.h <= near.y + near.h + 0.15 * mh) members.add(t.id);
     }
-    out.push({ score, n, mh, box: [x0, y0, x1, y1], members, lab, w, h });
+    const cxs = chars.map((d) => d.x + d.w / 2), cys = chars.map((d) => d.y + d.h / 2);
+    const mx = cxs.reduce((a, b) => a + b, 0) / n, my = cys.reduce((a, b) => a + b, 0) / n;
+    let sxy = 0, sxx = 0;
+    for (let k = 0; k < n; k++) { sxy += (cxs[k] - mx) * (cys[k] - my); sxx += (cxs[k] - mx) ** 2; }
+    const angle = n >= 3 && sxx > 0 ? Math.atan(sxy / sxx) : 0;
+    out.push({ score, n, mh, box: [x0, y0, x1, y1], members, lab, w, h, angle });
   }
   return out;
 }
@@ -256,7 +261,7 @@ export function lineBitmap(L, targetH = 44) {
   const bw = X1 - X0, bh = Y1 - Y0;
   const px = new Uint8ClampedArray(bw * bh).fill(255);
   for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (members.has(lab[(y + Y0) * w + x + X0])) px[y * bw + x] = 0;
-  return { w: bw, h: bh, g: px, scale: targetH / L.mh };
+  return { w: bw, h: bh, g: px, scale: targetH / L.mh, angle: L.angle || 0 };
 }
 
 export function overlaps(a, b) {

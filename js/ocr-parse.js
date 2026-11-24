@@ -27,11 +27,12 @@ export function normalizeLine(s) {
 // Corregge le confusioni tipiche dell'OCR (O→0, I→1, S→5...) solo nei gruppi soprattutto numerici.
 // Sostituzione carattere per carattere: gli indici restano allineati.
 export function fixDigits(s) {
-  return s.replace(/[0-9OILSBZ|][0-9OILSBZ|.\/\-]*[0-9OILSBZ|]/g, (tok) => {
+  // T→7, D/Q→0, G→6: tipici della stampa a punti (lo 0 squadrato sembra una D, il 7 una T)
+  return s.replace(/[0-9OILSBZTDQG|][0-9OILSBZTDQG|.\/\-]*[0-9OILSBZTDQG|]/g, (tok) => {
     const digits = (tok.match(/\d/g) || []).length;
-    const letters = (tok.match(/[OILSBZ|]/g) || []).length;
+    const letters = (tok.match(/[OILSBZTDQG|]/g) || []).length;
     if (!letters || digits < 2 || digits < letters + 2) return tok;
-    return tok.replace(/O/g, '0').replace(/[IL|]/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2');
+    return tok.replace(/[ODQ]/g, '0').replace(/[IL|]/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2').replace(/T/g, '7').replace(/G/g, '6');
   });
 }
 
@@ -113,7 +114,15 @@ const PATTERNS = [
     }, base: 14 },
   // 01 11 2026: con l'anno a quattro cifre gli spazi bastano (un lotto non ha questa forma)
   { name: 'spaced4', re: /(^|[^\d])(\d{2}) {1,2}(\d{2}) {1,2}(20\d{2})(?!\d)/g,
-    build: (m, Y) => { const d = part(m[2], 31), mo = part(m[3], 12), y = year(m[4], Y); return { exp: { d: d.n, m: mo.n, y: y.y }, fixes: [d, mo, y].filter((x) => x.fixed).length }; }, base: 22 },
+    build: (m, Y, now) => {
+      const d = part(m[2], 31), mo = part(m[3], 12), y = year(m[4], Y);
+      if (y.y < Y - 2 || y.y > Y + 12) { // anno letto male (stampa difettosa): giorno e mese, anno dedotto
+        let yy = Y;
+        if ((new Date(yy, mo.n - 1, d.n) - startOfDay(now)) / 86400000 < -45) yy += 1;
+        return { exp: { d: d.n, m: mo.n, y: yy }, fixes: 1, yearInferred: true };
+      }
+      return { exp: { d: d.n, m: mo.n, y: y.y }, fixes: [d, mo, y].filter((x) => x.fixed).length };
+    }, base: 22 },
   // 01 11 202? con l'anno illeggibile (stampa difettosa): giorno e mese, anno dedotto e segnalato
   { name: 'spacedPartial', re: /(^|[^\d])(\d{2}) {1,2}(\d{2}) {1,2}20(?:\d(?!\d)|(?!\d))/g,
     build: (m, Y, now) => {

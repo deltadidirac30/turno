@@ -37,6 +37,7 @@ Al primo uso dello scanner iOS chiede il permesso per la fotocamera. Fai un back
 - Se la fotocamera non mette a fuoco da vicino, usa **Foto nitida**: apre la fotocamera di sistema (messa a fuoco migliore), poi tocchi la data sulla foto.
 - La foto viene ripulita prima dell'OCR: luce resa uniforme, punti della stampa a getto uniti, righe di testo isolate e lette una per una (le scritte piccole come ore e lotti restano separate). Le date senza anno dei freschi (es. «28/11») sono riconosciute e l'anno dedotto viene segnalato da controllare.
 - Se non trova nulla, l'app mostra il testo che ha letto: aiuta a capire se la foto era sfocata.
+- Per le stampe più difficili (punti chiari su alluminio, come certi yogurt) c'è «Leggi con l'iPhone» nella scheda della data: si tocca il campo, si sceglie «Scansiona testo» (Testo dal vivo di iOS, sul dispositivo e gratuito) e Turno ricava la data dal testo inserito.
 
 ## Aggiornare l'app
 

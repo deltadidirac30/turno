@@ -168,15 +168,19 @@ function grayOf(src, targetH, maxW) {
 }
 
 function bitmapCanvas(bm, pad = 12) {
-  // riga binaria → canvas scalato all'altezza giusta per Tesseract, con margine bianco
+  // riga binaria → canvas scalato all'altezza giusta per Tesseract, raddrizzato, con margine bianco
   const src = toCanvas(bm, 0);
   const w = Math.max(1, Math.round(bm.w * bm.scale)), h = Math.max(1, Math.round(bm.h * bm.scale));
+  const a = Math.abs(bm.angle) > 0.025 ? -bm.angle : 0; // oltre ~1,5°
+  const cw = Math.ceil(Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a))), ch = Math.ceil(Math.abs(w * Math.sin(a)) + Math.abs(h * Math.cos(a)));
   const c = document.createElement('canvas');
-  c.width = w + 2 * pad; c.height = h + 2 * pad;
+  c.width = cw + 2 * pad; c.height = ch + 2 * pad;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(src, pad, pad, w, h);
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(a);
+  ctx.drawImage(src, -w / 2, -h / 2, w, h);
   src.width = src.height = 0;
   return c;
 }
