@@ -206,6 +206,7 @@ export function findLines(ink, w, h, { minH = h * 0.07, maxH = h * 0.75 } = {}) 
     if (best) { best.c.push(c); const hs = best.c.map((d) => d.h).sort((a, b) => a - b); best.mh = hs[hs.length >> 1]; }
     else lines.push({ c: [c], mh: c.h });
   }
+  const areaOf = new Map(comps.map((c) => [c.id, c.a]));
   const out = [];
   for (const L of lines) {
     const n = L.c.length;
@@ -247,21 +248,35 @@ export function findLines(ink, w, h, { minH = h * 0.07, maxH = h * 0.75 } = {}) 
     let sxy = 0, sxx = 0;
     for (let k = 0; k < n; k++) { sxy += (cxs[k] - mx) * (cys[k] - my); sxx += (cxs[k] - mx) ** 2; }
     const angle = n >= 3 && sxx > 0 ? Math.atan(sxy / sxx) : 0;
-    out.push({ score, n, mh, box: [x0, y0, x1, y1], members, lab, w, h, angle });
+    out.push({ score, n, mh, box: [x0, y0, x1, y1], members, lab, w, h, angle, ink, areaOf, cx: mx, cy: my });
   }
   return out;
 }
 
 // Immagine binaria (0 = inchiostro, 255 = fondo) della sola riga, ritagliata con margine.
+// Si prende tutto l'inchiostro dentro una fascia che segue l'inclinazione della riga (così i
+// pezzi staccati delle cifre a punti non si perdono), scartando solo la grana minuscola.
 export function lineBitmap(L, targetH = 44) {
-  const { lab, w, members } = L;
+  const { lab, w, ink, areaOf, mh } = L;
   const [x0, y0, x1, y1] = L.box;
-  const pad = Math.round(L.mh * 0.4);
+  const slope = Math.tan(L.angle || 0);
+  const half = 0.62 * mh;
+  const minA = Math.max(5, 0.006 * mh * mh);
+  const pad = Math.round(mh * 0.4);
   const X0 = Math.max(0, x0 - pad), Y0 = Math.max(0, y0 - pad), X1 = Math.min(w, x1 + pad), Y1 = Math.min(L.h, y1 + pad);
   const bw = X1 - X0, bh = Y1 - Y0;
   const px = new Uint8ClampedArray(bw * bh).fill(255);
-  for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) if (members.has(lab[(y + Y0) * w + x + X0])) px[y * bw + x] = 0;
-  return { w: bw, h: bh, g: px, scale: targetH / L.mh, angle: L.angle || 0 };
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const gx = x + X0, gy = y + Y0, i = gy * w + gx;
+      if (!ink[i]) continue;
+      if (Math.abs(gy - (L.cy + slope * (gx - L.cx))) > half) continue;
+      if (gx < x0 - 0.3 * mh || gx > x1 + 0.3 * mh) continue;
+      if ((areaOf.get(lab[i]) || 0) < minA && !L.members.has(lab[i])) continue;
+      px[y * bw + x] = 0;
+    }
+  }
+  return { w: bw, h: bh, g: px, scale: targetH / mh, angle: L.angle || 0 };
 }
 
 export function overlaps(a, b) {

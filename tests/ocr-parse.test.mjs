@@ -41,4 +41,6 @@ check('anno illeggibile', '01 11 202° 11550', { list: ['1/11/2026:unknown'] });
 check('spazi e anno intero', '01 11 2026 L1550', { list: ['1/11/2026:unknown'] });
 check('stampa a punti T e D', 'D6.01.2T', { list: ['6/1/2027:unknown'] });
 check('anno stampato male', '01 11 2020 L1550', { list: ['1/11/2026:unknown'] });
+check('0 aperto e 6 come lettere', 've.01. 27', { list: ['6/1/2027:unknown'] });
+check('parole normali intatte', 'DA CONSUMARSI ENTRO IL 12.03.27', { list: ['12/3/2027:use_by'] });
 process.exit(fail ? 1 : 0);

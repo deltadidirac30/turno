@@ -26,7 +26,25 @@ export function normalizeLine(s) {
 
 // Corregge le confusioni tipiche dell'OCR (O→0, I→1, S→5...) solo nei gruppi soprattutto numerici.
 // Sostituzione carattere per carattere: gli indici restano allineati.
+// Lettere che la stampa a punti fa sembrare cifre (0 squadrato aperto → U/V/D, 6 → E/F/G, 7 → T...).
+const DOT_LOOKALIKE = { O: '0', D: '0', Q: '0', U: '0', V: '0', I: '1', L: '1', J: '1', '|': '1', '!': '1', Z: '2', A: '4', S: '5', E: '6', F: '6', G: '6', T: '7', Y: '7', B: '8' };
+
+// Gruppi con la forma di una data (2+2+2/4 caratteri con separatori) fatti quasi solo di cifre:
+// le lettere vengono lette come le cifre a cui somigliano. Sostituzione 1:1, indici invariati.
+function fixDateShapes(s) {
+  return s.replace(/(^|[^A-Z0-9])([A-Z0-9|!]{2})(\s?[.\/\-,]\s?)([A-Z0-9|!]{2})(\s?[.\/\-,]\s?)([A-Z0-9|!]{4}|[A-Z0-9|!]{2})(?![A-Z0-9])/g,
+    (m, pre, a, s1, b, s2, c) => {
+      const all = a + b + c;
+      const digits = (all.match(/\d/g) || []).length;
+      const letters = all.length - digits;
+      if (digits < 3 || letters > 2 || [...all].some((ch) => !/\d/.test(ch) && !DOT_LOOKALIKE[ch])) return m;
+      const map = (t) => [...t].map((ch) => (/\d/.test(ch) ? ch : DOT_LOOKALIKE[ch])).join('');
+      return pre + map(a) + s1 + map(b) + s2 + map(c);
+    });
+}
+
 export function fixDigits(s) {
+  s = fixDateShapes(s);
   // T→7, D/Q→0, G→6: tipici della stampa a punti (lo 0 squadrato sembra una D, il 7 una T)
   return s.replace(/[0-9OILSBZTDQG|][0-9OILSBZTDQG|.\/\-]*[0-9OILSBZTDQG|]/g, (tok) => {
     const digits = (tok.match(/\d/g) || []).length;
