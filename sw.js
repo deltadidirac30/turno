@@ -4,7 +4,7 @@
 // - Le risorse pesanti in vendor/ (ZXing, Tesseract) vivono in una cache separata,
 //   riempita dall'app (resources.js) o al primo utilizzo, e servite da lì offline.
 // Percorsi relativi: funziona anche sotto /nome-repo/.
-const VERSION = '1.3.1'; // allineare con js/version.js
+const VERSION = '1.4.0'; // allineare con js/version.js
 const SHELL = 'turno-shell-' + VERSION;
 const RES = 'turno-res-v1';
 
@@ -36,11 +36,13 @@ const SHELL_FILES = [
   'js/resources.js',
   'js/router.js',
   'js/store.js',
+  'js/theme.js',
   'js/util.js',
   'js/version.js',
   'js/views/batch.js',
   'js/views/home.js',
   'js/views/item.js',
+  'js/views/places.js',
   'js/views/scan.js',
   'js/views/settings.js',
   'js/views/todo.js',

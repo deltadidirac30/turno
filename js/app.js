@@ -4,8 +4,10 @@ import * as db from './db.js';
 import * as resources from './resources.js';
 import { h, clear, icon } from './util.js';
 import { noteNavigation } from './router.js';
+import { applyTheme } from './theme.js';
 import * as home from './views/home.js';
 import * as todo from './views/todo.js';
+import * as places from './views/places.js';
 import * as item from './views/item.js';
 import * as scan from './views/scan.js';
 import * as batch from './views/batch.js';
@@ -14,7 +16,9 @@ import * as settings from './views/settings.js';
 const ROUTES = {
   '': { view: home, tab: 'list' },
   todo: { view: todo, tab: 'list' },
+  places: { view: places, tab: 'places' },
   item: { view: item, tab: 'list' },
+  edit: { view: item, tab: 'list' },
   add: { view: item, tab: 'list' },
   'add-again': { view: item, tab: 'list' },
   scan: { view: scan, full: true },
@@ -42,7 +46,7 @@ async function route() {
   root.scrollTop = 0;
   window.scrollTo(0, 0);
   try {
-    cleanup = (await r.view.render(root, arg)) || null;
+    cleanup = (await r.view.render(root, arg, name)) || null;
   } catch (e) {
     console.error(e);
     root.append(h('div', { class: 'empty' }, h('p', { class: 'empty-title' }, t('error.title')), h('p', { class: 'empty-text' }, String(e && e.message || e))));
@@ -56,7 +60,9 @@ function buildTabbar() {
   clear(bar);
   bar.append(
     h('a', { href: '#/', class: 'tab', dataset: { tab: 'list' } }, icon('list'), h('span', {}, t('nav.list'))),
-    h('a', { href: '#/scan', class: 'tab tab-scan', dataset: { tab: 'scan' } }, icon('scan'), h('span', {}, t('nav.scan'))),
+    h('a', { href: '#/places', class: 'tab', dataset: { tab: 'places' } }, icon('fridge'), h('span', {}, t('nav.places'))),
+    h('a', { href: '#/scan', class: 'tab tab-scan', dataset: { tab: 'scan' } }, h('span', { class: 'scan-orb' }, icon('scan')), h('span', {}, t('nav.scan'))),
+    h('a', { href: '#/batch', class: 'tab', dataset: { tab: 'batch' } }, icon('bag'), h('span', {}, t('nav.batch'))),
     h('a', { href: '#/settings', class: 'tab', dataset: { tab: 'settings' } }, icon('gear'), h('span', {}, t('nav.settings'))));
 }
 
@@ -97,6 +103,8 @@ async function start() {
     return;
   }
   setLang(s.lang);
+  applyTheme(s.theme);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', async () => applyTheme((await db.getSettings()).theme));
   applyStatic();
   buildTabbar();
   offlineBadge();

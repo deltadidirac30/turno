@@ -5,7 +5,7 @@ import { isValidExpiry } from './dates.js';
 export const FORMAT = 1;
 const LOCATIONS = ['fridge', 'freezer', 'pantry', null];
 const KINDS = ['use_by', 'best_before', 'unknown'];
-const STATUSES = ['active', 'consumed'];
+const STATUSES = ['active', 'consumed', 'wasted'];
 
 export async function exportData() {
   const [items, products, settings, stats] = await Promise.all([
@@ -54,7 +54,7 @@ export function validate(raw) {
       expiryKind: it.expiryKind || 'unknown', noDate: !!it.noDate,
       location: it.location ?? null, shelf: isStr(it.shelf) ? it.shelf : '', qty: it.qty,
       openedAt: it.openedAt || null, openDays: it.openDays ?? null,
-      status: it.status, consumedAt: it.consumedAt || null, batchId: null,
+      status: it.status, consumedAt: it.consumedAt || null, wastedAt: it.wastedAt || null, batchId: null,
       createdAt: it.createdAt || new Date().toISOString(), updatedAt: it.updatedAt || new Date().toISOString(),
     });
   });

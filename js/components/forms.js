@@ -5,7 +5,7 @@ import { fieldsToExpiry, expiryToFields, sameExpiry, addDays, parseYMD, formatDa
 import { LOCATIONS } from '../store.js';
 import { extractDates } from '../ocr-parse.js';
 
-function seg(options, value, onPick, { cls = '', label } = {}) {
+export function seg(options, value, onPick, { cls = '', label } = {}) {
   const wrap = h('div', { class: 'seg ' + cls, role: 'radiogroup', 'aria-label': label });
   const btns = options.map(([v, text]) => {
     const b = h('button', { type: 'button', role: 'radio', class: 'seg-btn', 'aria-checked': String(v === value), dataset: { v: v ?? '' } }, text);

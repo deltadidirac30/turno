@@ -49,7 +49,8 @@ Dopo aver modificato i file, aumenta `VERSION` in `sw.js` e `APP_VERSION` in `js
 |---|---|
 | `index.html`, `manifest.webmanifest`, `sw.js`, `icons/` | guscio PWA |
 | `js/i18n.js` | **tutti i testi**: per una nuova lingua copia il blocco `it` e aggiungila a `LANGUAGES` |
-| `js/views/` | lista, spesa intera, scanner, scheda, impostazioni |
+| `js/views/` | «Da usare» (lista per scadenza), «Dispensa» (frigo, freezer e dispensa ripiano per ripiano), spesa intera, scanner, scheda con azioni rapide (consumato, aperto, sposta, buttato), impostazioni |
+| `css/app.css` | stile: tema chiaro predefinito, scuro o automatico dalle impostazioni |
 | `js/ocr-parse.js` | ricerca delle date nel testo letto (formati italiani, diciture, lotti esclusi) |
 | `vendor/` | ZXing WASM e Tesseract.js con il modello italiano, serviti in locale |
 

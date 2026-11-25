@@ -13,7 +13,7 @@ export function newItem(partial = {}) {
     expiry: null, expiryKind: 'unknown', noDate: false,
     location: null, shelf: '', qty: 1,
     openedAt: null, openDays: null,
-    status: 'active', consumedAt: null, batchId: null,
+    status: 'active', consumedAt: null, wastedAt: null, batchId: null,
     createdAt: now, updatedAt: now,
     ...partial,
   };
@@ -51,6 +51,13 @@ export async function consumeOne(item) {
   else after = { ...item, status: 'consumed', consumedAt: nowISO(), updatedAt: nowISO() };
   await db.items.put(after);
   return { after, undo: () => db.items.put(before) };
+}
+
+// Buttato: esce dalla lista come «consumato», ma conta a parte nelle statistiche.
+export async function waste(item) {
+  const before = { ...item };
+  await db.items.put({ ...item, status: 'wasted', wastedAt: nowISO(), updatedAt: nowISO() });
+  return () => db.items.put(before);
 }
 
 export async function remove(item) {

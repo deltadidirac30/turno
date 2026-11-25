@@ -52,6 +52,14 @@ const ICONS = {
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>',
   open: '<path d="M5 10h14v9H5zM5 10l2-5h10l2 5"/>',
   dots: '<circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/>',
+  fridge: '<rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M6 10h12M9 6.5v1.5M9 13v2.5"/>',
+  freezer: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5"/>',
+  pantry: '<path d="M8 4h8v2.5a2 2 0 001 1.7l.3.2A3 3 0 0119 11v7a2.5 2.5 0 01-2.5 2.5h-9A2.5 2.5 0 015 18v-7a3 3 0 011.7-2.6l.3-.2a2 2 0 001-1.7z"/><path d="M5 13h14"/>',
+  bag: '<path d="M5 8h14l-1.2 11.2a2 2 0 01-2 1.8H8.2a2 2 0 01-2-1.8z"/><path d="M9 10V7a3 3 0 016 0v3"/>',
+  pencil: '<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19z"/><path d="M14 7l3 3"/>',
+  move: '<path d="M4 12h14M14 7l5 5-5 5"/>',
+  bin: '<path d="M4 7h16M9 7V4.5h6V7M6 7l1.2 13h9.6L18 7"/><path d="M10 11v6M14 11v6"/>',
+  home: '<path d="M4 11l8-7 8 7v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 19.5z"/><path d="M10 21v-6h4v6"/>',
 };
 export function icon(name, cls = '') {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

@@ -83,7 +83,7 @@ export function replaceAll({ items: list, products: prods, kv: rows }) {
 }
 
 // --- Impostazioni ---
-export const DEFAULT_SETTINGS = { lang: 'it', defaultLocation: 'fridge', icsDaysBefore: 1, icsHour: 9, autoDownload: true };
+export const DEFAULT_SETTINGS = { lang: 'it', defaultLocation: 'fridge', icsDaysBefore: 1, icsHour: 9, autoDownload: true, theme: 'light' };
 export async function getSettings() { return { ...DEFAULT_SETTINGS, ...(await kv.get('settings', {})) }; }
 export async function saveSettings(patch) { const s = { ...(await getSettings()), ...patch }; await kv.set('settings', s); return s; }
 

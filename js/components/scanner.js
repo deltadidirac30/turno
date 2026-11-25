@@ -241,11 +241,21 @@ export function dateTools(onFile) {
 
 export function kindLabel(kind) { return t('kind.' + kind); }
 
+// Nessuna data: un messaggio breve e cosa provare, senza mostrare il testo grezzo letto
+// (spesso sono lettere a caso e confondono più che aiutare).
 export function noDateMessage(r, key) {
-  return h('span', {}, t(key), r.snippet ? h('span', { class: 'snippet' }, t('scan.readSnippet', { text: r.snippet })) : null);
+  return h('span', {}, t('scan.noDateTitle'), h('span', { class: 'msg-tips' }, t(key)));
 }
 
-// Scelta tra più date lette, con il testo vicino.
+// Il testo vicino alla data aiuta solo se è leggibile (es. «da consumarsi entro»).
+function readableContext(c) {
+  const s = (c.context || '').trim();
+  if (!s || c.kind === 'unknown') return false;
+  const words = s.split(/\s+/).filter((w) => /^[a-zà-ù]{3,}$/i.test(w));
+  return words.length >= 2;
+}
+
+// Scelta tra più date lette, con il testo vicino quando è leggibile.
 export function chooseDate(host, candidates) {
   return sheet((close, panel) => {
     panel.append(
@@ -255,7 +265,7 @@ export function chooseDate(host, candidates) {
         h('button', { type: 'button', class: 'choice' + (i === 0 ? ' is-top' : ''), onclick: () => close(c) },
           h('span', { class: 'choice-date' }, formatExpiry(c.exp)),
           h('span', { class: 'choice-kind' }, [kindLabel(c.kind), c.exp.d == null ? t('date.monthOnlyShort') : '', expiryEnd(c.exp) < startOfDay() ? t('choose.past') : ''].filter(Boolean).join(', ')),
-          h('span', { class: 'choice-ctx' }, '“' + c.context + '”')))),
+          readableContext(c) ? h('span', { class: 'choice-ctx' }, '“' + c.context.trim() + '”') : null))),
       h('div', { class: 'sheet-actions' },
         h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close('none') }, t('choose.none')),
         h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => close('retake') }, t('choose.retake'))));

@@ -4,6 +4,7 @@ import { t } from '../i18n.js';
 import * as db from '../db.js';
 import { isIncomplete, missing } from '../store.js';
 import { navigate, back } from '../router.js';
+import { sticker } from './home.js';
 
 export async function render(root) {
   const list = (await db.items.active()).filter(isIncomplete).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
@@ -21,7 +22,8 @@ export async function render(root) {
   root.append(h('ul', { class: 'rows rows-todo' }, list.map((i) => {
     const miss = missing(i);
     return h('li', { class: 'row is-incomplete' },
-      h('a', { class: 'row-main', href: '#/item/' + i.id },
+      h('a', { class: 'row-main', href: '#/edit/' + i.id },
+        sticker(i),
         h('span', { class: 'what' },
           h('span', { class: 'name' }, i.name || h('em', {}, t('item.unnamed'))),
           h('span', { class: 'meta' }, [i.brand, i.location ? t('loc.' + i.location) : '', i.ean ? i.ean : ''].filter(Boolean).join(', ')),

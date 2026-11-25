@@ -4,7 +4,8 @@ import { t, LANGUAGES, setLang, lang } from '../i18n.js';
 import * as db from '../db.js';
 import * as resources from '../resources.js';
 import { exportData, validate, restore } from '../backup.js';
-import { locationPicker } from '../components/forms.js';
+import { locationPicker, seg } from '../components/forms.js';
+import { applyTheme } from '../theme.js';
 import { exportIcs } from './item.js';
 import { urgency } from '../dates.js';
 import { APP_VERSION } from '../version.js';
@@ -12,6 +13,9 @@ import { APP_VERSION } from '../version.js';
 export async function render(root) {
   const s = await db.getSettings();
   const stats = await db.kv.get('stats', null);
+  const all = await db.items.all();
+  const nConsumed = all.filter((i) => i.status === 'consumed').length;
+  const nWasted = all.filter((i) => i.status === 'wasted').length;
   const disposers = [];
   clear(root);
 
@@ -85,6 +89,8 @@ export async function render(root) {
 
   root.append(
     h('header', { class: 'top' }, h('div', { class: 'top-row' }, h('h1', {}, t('settings.title')))),
+    section(t('settings.theme'),
+      seg(['light', 'dark', 'auto'].map((v) => [v, t('settings.theme.' + v)]), s.theme || 'light', (v) => { applyTheme(v); db.saveSettings({ theme: v }); }, { label: t('settings.theme') }).el),
     section(t('settings.offline'),
       h('p', { class: 'muted small' }, t('settings.offlineText')),
       resRow('barcode'), resRow('ocr'),
@@ -110,6 +116,8 @@ export async function render(root) {
       h('p', { class: 'muted small' }, t('settings.statsText')),
       h('dl', { class: 'stats' },
         h('dt', {}, t('stats.saved')), h('dd', {}, String(stats?.saved || 0)),
+        h('dt', {}, t('stats.consumed')), h('dd', {}, String(nConsumed)),
+        h('dt', {}, t('stats.wasted')), h('dd', {}, String(nWasted)),
         h('dt', {}, t('stats.ocrAccepted')), h('dd', {}, String(stats?.ocrAccepted || 0)),
         h('dt', {}, t('stats.ocrCorrected')), h('dd', {}, String(stats?.ocrCorrected || 0)),
         stats?.lastBatch ? [h('dt', {}, t('stats.lastBatch')), h('dd', {}, t('stats.lastBatchVal', { n: stats.lastBatch.total, m: Math.floor(stats.lastBatch.seconds / 60), s: stats.lastBatch.seconds % 60, c: stats.lastBatch.corrected, k: stats.lastBatch.skipped }))] : null)),
